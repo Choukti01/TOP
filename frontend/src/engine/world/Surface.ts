@@ -8,13 +8,13 @@ export class Surface {
 
         const geometry = new THREE.SphereGeometry(
             5,
-            128,
-            128
+            192,
+            192
         );
 
         const material = new THREE.MeshStandardMaterial({
 
-            color: 0x355c3a,
+            color: new THREE.Color("#355C3A"),
 
             roughness: 1,
 

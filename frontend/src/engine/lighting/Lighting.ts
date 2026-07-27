@@ -6,20 +6,20 @@ export class Lighting {
 
         const ambient = new THREE.AmbientLight(
             0xffffff,
-            0.2
+            0.25
         );
 
         scene.add(ambient);
 
         const sun = new THREE.DirectionalLight(
             0xffffff,
-            3
+            3.5
         );
 
         sun.position.set(
-            30,
-            20,
-            20
+            25,
+            18,
+            12
         );
 
         scene.add(sun);

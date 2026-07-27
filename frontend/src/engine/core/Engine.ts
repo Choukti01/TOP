@@ -23,7 +23,9 @@ export class Engine {
         // =====================================================
 
         this.renderer = new Renderer(container);
+
         this.scene = new SceneManager();
+
         this.camera = new CameraManager();
 
         // =====================================================
@@ -43,32 +45,49 @@ export class Engine {
         );
 
         // =====================================================
-        // Animation
+        // Animation Loop
         // =====================================================
 
         this.animation = new AnimationLoop(
+
             this,
+
             this.renderer,
+
             this.scene,
+
             this.camera
+
         );
 
         console.log("✅ TOP Engine initialized.");
 
     }
 
-    /**
-     * Called every frame.
-     */
+    // =========================================================
+    // Frame Update
+    // =========================================================
+
     public update(delta: number): void {
+
+        // ---------------------------------------------
+        // Camera
+        // ---------------------------------------------
+
+        this.camera.update(delta);
+
+        // ---------------------------------------------
+        // World
+        // ---------------------------------------------
 
         this.world.update(delta);
 
     }
 
-    /**
-     * Starts the engine.
-     */
+    // =========================================================
+    // Engine Start
+    // =========================================================
+
     public start(): void {
 
         console.log("▶ Starting TOP Engine...");

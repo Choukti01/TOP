@@ -6,28 +6,44 @@ export class Surface {
 
     constructor() {
 
-        const geometry = new THREE.SphereGeometry(
-            5,
-            192,
-            192
-        );
+        const geometry =
 
-        const material = new THREE.MeshStandardMaterial({
+            new THREE.SphereGeometry(
 
-            color: new THREE.Color("#355C3A"),
+                5,
 
-            roughness: 1,
+                256,
 
-            metalness: 0
+                256
 
-        });
+            );
 
-        this.mesh = new THREE.Mesh(
-            geometry,
-            material
-        );
+        const material =
+
+            new THREE.MeshStandardMaterial({
+
+                vertexColors: true,
+
+                roughness: 0.95,
+
+                metalness: 0.02,
+
+                flatShading: false
+
+            });
+
+        this.mesh =
+
+            new THREE.Mesh(
+
+                geometry,
+
+                material
+
+            );
 
         this.mesh.castShadow = true;
+
         this.mesh.receiveShadow = true;
 
     }

@@ -1,11 +1,19 @@
 import * as THREE from "three";
-import { PlanetNoise } from "./PlanetNoise";
+
+import { PlanetHeightMap } from "./PlanetHeightMap";
+import { PlanetMaterialMap } from "./PlanetMaterialMap";
 
 export class PlanetGenerator {
 
-    private noise = new PlanetNoise();
+    private heightmap =
+        new PlanetHeightMap();
 
-    public generate(mesh: THREE.Mesh): void {
+    private materials =
+        new PlanetMaterialMap();
+
+    public generate(
+        mesh: THREE.Mesh
+    ): void {
 
         const geometry =
             mesh.geometry as THREE.SphereGeometry;
@@ -13,7 +21,17 @@ export class PlanetGenerator {
         const position =
             geometry.attributes.position;
 
-        for (let i = 0; i < position.count; i++) {
+        // ----------------------------------------------------
+        // Vertex Colours
+        // ----------------------------------------------------
+
+        const colors: number[] = [];
+
+        for (
+            let i = 0;
+            i < position.count;
+            i++
+        ) {
 
             let x = position.getX(i);
             let y = position.getY(i);
@@ -26,20 +44,19 @@ export class PlanetGenerator {
                     z * z
                 );
 
-            // Normalize vertex
             x /= length;
             y /= length;
             z /= length;
 
-            const elevation =
-                this.noise.sample(
+            const sample =
+                this.heightmap.sample(
                     x,
                     y,
                     z
                 );
 
             const radius =
-                5 + elevation;
+                5 + sample.height;
 
             position.setXYZ(
 
@@ -51,7 +68,31 @@ export class PlanetGenerator {
 
             );
 
+            const color =
+                this.materials.color(
+                    sample.terrain
+                );
+
+            colors.push(
+
+                color.r,
+                color.g,
+                color.b
+
+            );
+
         }
+
+        geometry.setAttribute(
+
+            "color",
+
+            new THREE.Float32BufferAttribute(
+                colors,
+                3
+            )
+
+        );
 
         position.needsUpdate = true;
 

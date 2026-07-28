@@ -7,33 +7,28 @@ export class Atmosphere {
     constructor() {
 
         const geometry = new THREE.SphereGeometry(
-
             5.18,
             128,
             128
-
         );
 
-        const material = new THREE.MeshPhongMaterial({
+        const material = new THREE.MeshBasicMaterial({
 
-            color: 0x6cb8ff,
+            color: 0x66ccff,
 
             transparent: true,
 
-            opacity: 0.12,
+            opacity: 0.08,
 
-            side: THREE.DoubleSide,
+            side: THREE.BackSide,
 
             depthWrite: false
 
         });
 
         this.mesh = new THREE.Mesh(
-
             geometry,
-
             material
-
         );
 
     }

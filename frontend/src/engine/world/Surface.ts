@@ -7,39 +7,29 @@ export class Surface {
     constructor() {
 
         const geometry =
-
             new THREE.SphereGeometry(
-
                 5,
-
                 256,
-
                 256
-
             );
 
         const material =
-
             new THREE.MeshStandardMaterial({
 
                 vertexColors: true,
 
-                roughness: 0.95,
+                roughness: 1,
 
-                metalness: 0.02,
+                metalness: 0,
 
                 flatShading: false
 
             });
 
         this.mesh =
-
             new THREE.Mesh(
-
                 geometry,
-
                 material
-
             );
 
         this.mesh.castShadow = true;

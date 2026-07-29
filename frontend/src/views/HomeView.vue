@@ -1,25 +1,45 @@
 <template>
-<div ref="container" class="engine"></div>
+
+<div ref="container" class="world"></div>
+
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { Engine } from "@/engine/core/Engine";
 
-const container = ref<HTMLElement | null>(null);
+import { ref,onMounted } from "vue";
 
-onMounted(() => {
-  if (!container.value) return;
+import { Engine } from "../engine/core/Engine";
 
-  const engine = new Engine(container.value);
-  engine.start();
+const container = ref<HTMLElement>();
+
+onMounted(()=>{
+
+    if(container.value){
+
+        const engine = new Engine(
+
+            container.value
+
+        );
+
+        engine.start();
+
+    }
+
 });
+
 </script>
 
 <style scoped>
-.engine {
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
+
+.world{
+
+position:fixed;
+
+inset:0;
+
+overflow:hidden;
+
 }
+
 </style>

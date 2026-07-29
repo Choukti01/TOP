@@ -1,19 +1,12 @@
 import * as THREE from "three";
 
-import { PlanetHeightMap } from "./PlanetHeightMap";
-import { PlanetMaterialMap } from "./PlanetMaterialMap";
+import { PlanetNoise } from "./PlanetNoise";
 
 export class PlanetGenerator {
 
-    private heightmap =
-        new PlanetHeightMap();
+    private noise = new PlanetNoise();
 
-    private materials =
-        new PlanetMaterialMap();
-
-    public generate(
-        mesh: THREE.Mesh
-    ): void {
+    public generate(mesh: THREE.Mesh): void {
 
         const geometry =
             mesh.geometry as THREE.SphereGeometry;
@@ -21,42 +14,33 @@ export class PlanetGenerator {
         const position =
             geometry.attributes.position;
 
-        // ----------------------------------------------------
-        // Vertex Colours
-        // ----------------------------------------------------
-
         const colors: number[] = [];
 
-        for (
-            let i = 0;
-            i < position.count;
-            i++
-        ) {
+        for (let i = 0; i < position.count; i++) {
 
             let x = position.getX(i);
             let y = position.getY(i);
             let z = position.getZ(i);
 
-            const length =
-                Math.sqrt(
-                    x * x +
-                    y * y +
-                    z * z
-                );
+            const length = Math.sqrt(
+                x * x +
+                y * y +
+                z * z
+            );
 
             x /= length;
             y /= length;
             z /= length;
 
-            const sample =
-                this.heightmap.sample(
-                    x,
-                    y,
-                    z
-                );
+            const elevation =
+                this.noise.sample(x, y, z);
+
+            // -------------------------------------------------
+            // Planet Shape
+            // -------------------------------------------------
 
             const radius =
-                5 + sample.height;
+                5 + elevation * 0.45;
 
             position.setXYZ(
 
@@ -68,17 +52,51 @@ export class PlanetGenerator {
 
             );
 
-            const color =
-                this.materials.color(
-                    sample.terrain
-                );
+            // -------------------------------------------------
+            // Planet Colours
+            // -------------------------------------------------
+
+            let color: THREE.Color;
+
+            // Oceans
+            if (elevation < -0.12) {
+
+                color = new THREE.Color(0x0b3d91);
+
+            }
+
+            // Beaches
+            else if (elevation < -0.04) {
+
+                color = new THREE.Color(0xd9d19a);
+
+            }
+
+            // Grasslands
+            else if (elevation < 0.15) {
+
+                color = new THREE.Color(0x3d8b3d);
+
+            }
+
+            // Mountains
+            else if (elevation < 0.32) {
+
+                color = new THREE.Color(0x666666);
+
+            }
+
+            // Snow
+            else {
+
+                color = new THREE.Color(0xffffff);
+
+            }
 
             colors.push(
-
                 color.r,
                 color.g,
                 color.b
-
             );
 
         }

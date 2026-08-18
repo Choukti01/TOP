@@ -1,4 +1,4 @@
-import type { WorkspaceNode } from "./Node";
+import type { WorkspaceNode, WorkspaceNodeDetails } from "./Node";
 
 export class NodeManager {
 
@@ -12,13 +12,37 @@ export class NodeManager {
 
     private createDefaults(): void {
 
-        this.add("TOP",0,0);
+        this.add("TOP",-25,-35,{
+            description:"The creator universe where your ideas become real-world projects.",
+            kind:"world",
+            status:"active",
+            progress:82,
+            color:"#70b8ff"
+        });
 
-        this.add("rifKANDO",520,160);
+        this.add("rifKANDO",180,125,{
+            description:"A multi-service platform connecting people to local opportunity.",
+            kind:"venture",
+            status:"growing",
+            progress:64,
+            color:"#a68cff"
+        });
 
-        this.add("BlueRif",-420,-250);
+        this.add("BlueRif",-180,-155,{
+            description:"A creative identity exploring culture, stories, and visual direction.",
+            kind:"studio",
+            status:"active",
+            progress:46,
+            color:"#4dd4c6"
+        });
 
-        this.add("Deutschio",-620,260);
+        this.add("Deutschio",-165,180,{
+            description:"A language-learning world built around meaningful daily practice.",
+            kind:"learning",
+            status:"planning",
+            progress:28,
+            color:"#f3b35b"
+        });
 
     }
 
@@ -28,15 +52,19 @@ export class NodeManager {
 
         x:number,
 
-        y:number
+        y:number,
 
-    ){
+        details:WorkspaceNodeDetails
 
-        this.nodes.push({
+    ):WorkspaceNode{
+
+        const node:WorkspaceNode = {
 
             id:crypto.randomUUID(),
 
             title,
+
+            ...details,
 
             x,
 
@@ -48,7 +76,11 @@ export class NodeManager {
 
             selected:false
 
-        });
+        };
+
+        this.nodes.push(node);
+
+        return node;
 
     }
 

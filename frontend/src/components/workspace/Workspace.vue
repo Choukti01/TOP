@@ -8,12 +8,17 @@
     <!-- Center -->
     <main class="center">
 
-        <WorkspaceCanvas/>
+        <WorkspaceCanvas v-show="WorkspaceState.activeSection === 'Overview'"/>
+
+        <WorkspaceInspector v-if="WorkspaceState.activeSection === 'Overview'"/>
+
+        <WorkspaceSectionPanel v-if="WorkspaceState.activeSection !== 'Overview'"/>
+
+        <SeedComposer/>
+
+        <WorkspaceToast/>
 
     </main>
-
-    <!-- Right Inspector -->
-    <WorkspaceInspector/>
 
 </div>
 
@@ -24,6 +29,10 @@
 import WorkspaceSidebar from "./WorkspaceSidebar.vue";
 import WorkspaceCanvas from "./WorkspaceCanvas.vue";
 import WorkspaceInspector from "./WorkspaceInspector.vue";
+import WorkspaceSectionPanel from "./WorkspaceSectionPanel.vue";
+import SeedComposer from "./SeedComposer.vue";
+import WorkspaceToast from "./WorkspaceToast.vue";
+import { WorkspaceState } from "./WorkspaceState";
 
 </script>
 
@@ -39,11 +48,9 @@ display:grid;
 
 grid-template-columns:
 
-280px
+224px
 
-1fr
-
-320px;
+minmax(0,1fr);
 
 background:#040812;
 
@@ -58,6 +65,26 @@ position:relative;
 overflow:hidden;
 
 background:#040812;
+
+}
+
+@media (max-width: 1220px){
+
+.workspace{
+
+grid-template-columns:
+
+210px
+
+1fr;
+
+}
+
+.workspace :deep(.inspector){
+
+display:none;
+
+}
 
 }
 

@@ -33,6 +33,7 @@ let targetColor = new THREE.Color("#62e6ff");
 let currentColor = new THREE.Color("#62e6ff");
 let reduceMotion = false;
 let energy = 0;
+let compactField = false;
 
 function profile(mode: string): { color: string; rotation: number; tilt: number; distance: number; scale: number } {
   if (mode.includes("arrival")) return { color: "#f2edff", rotation: -.2, tilt: .18, distance: 7.8, scale: 1.92 };
@@ -73,7 +74,7 @@ function makeConstellation(): THREE.Points {
   const colors: number[] = [];
   const palette = [new THREE.Color("#62e6ff"), new THREE.Color("#9c7cff"), new THREE.Color("#d9ff71"), new THREE.Color("#ff72bd")];
 
-  for (let index = 0; index < 360; index += 1) {
+  for (let index = 0; index < (compactField ? 180 : 360); index += 1) {
     const radius = 3 + Math.random() * 12;
     const phi = Math.random() * Math.PI * 2;
     const theta = Math.acos(2 * Math.random() - 1);
@@ -102,12 +103,13 @@ function mount(): void {
   if (!host.value) return;
 
   reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  compactField = window.matchMedia("(max-width: 700px)").matches;
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(42, 1, .1, 100);
   camera.position.set(0, 1.2, targetDistance);
 
   renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, compactField ? 1.15 : 1.6));
   renderer.setClearColor(0x000000, 0);
   host.value.appendChild(renderer.domElement);
 
@@ -124,7 +126,7 @@ function mount(): void {
     transparent: true,
     opacity: .8
   });
-  core = new THREE.Mesh(new THREE.SphereGeometry(1.6, 48, 48), coreMaterial);
+  core = new THREE.Mesh(new THREE.SphereGeometry(1.6, compactField ? 32 : 48, compactField ? 32 : 48), coreMaterial);
   field.add(core);
 
   rings = new THREE.Group();
@@ -146,7 +148,7 @@ function mount(): void {
 
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), .52, .46, .22);
+  bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), compactField ? .38 : .52, .46, .22);
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
 
@@ -183,7 +185,7 @@ function animate(): void {
   const energyScale = 1 + energy * .2;
   rings.scale.setScalar(energyScale);
   constellation.scale.setScalar(1 + energy * .08);
-  if (bloomPass) bloomPass.strength = .52 + energy * .68;
+  if (bloomPass) bloomPass.strength = (compactField ? .38 : .52) + energy * .48;
 
   if (!reduceMotion) {
     core.rotation.y += .0035;

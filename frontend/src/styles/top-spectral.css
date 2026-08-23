@@ -83,3 +83,119 @@ select:focus-visible { outline: 2px solid var(--top-cyan) !important; outline-of
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
+
+/* Phone field — the same TOP experience, composed for a thumb and a small viewport. */
+@media (max-width: 760px) {
+  html { -webkit-text-size-adjust: 100%; overscroll-behavior-x: none; }
+  body { overscroll-behavior-y: none; }
+  button, input, textarea, select { font-size: 16px; }
+
+  .intro .content { max-width: 560px; padding:28px 22px calc(28px + env(safe-area-inset-bottom)); }
+  .intro .hero-logo { height:116px; margin-bottom:15px; width:116px; }
+  .intro .content h1 { font-size:clamp(45px,14vw,68px); line-height:.9; margin:17px 0 15px; }
+  .intro .content p { font-size:15px; line-height:1.55; }
+  .intro .enter { min-height:48px; margin-top:25px; padding:11px 14px 11px 18px; }
+  .intro .edge-note { display:none; }
+
+  .threshold main { max-width:600px; padding:76px 22px calc(30px + env(safe-area-inset-bottom)); }
+  .threshold .back { left:max(12px, env(safe-area-inset-left)); top:max(13px, env(safe-area-inset-top)); }
+  .threshold h1 { font-size:clamp(43px,13vw,62px); }
+  .threshold main > p { font-size:15px; line-height:1.58; }
+  .threshold .choice { min-height:116px; padding:16px; }
+  .threshold .choice strong { font-size:23px; }
+
+  .identity { min-height:100svh; padding-bottom:calc(34px + env(safe-area-inset-bottom)) !important; }
+  .identity .masthead { left:max(16px, env(safe-area-inset-left)); right:max(16px, env(safe-area-inset-right)); top:max(16px, env(safe-area-inset-top)); }
+  .identity .brand img { height:48px; width:48px; }
+  .identity .home-link { min-height:44px; padding:8px 12px; }
+  .identity .panel { width:100%; }
+  .identity .progress { margin-bottom:27px; }
+  .identity .question > p { font-size:15px; line-height:1.56; }
+  .identity .choice { min-height:118px; }
+
+  .generating .panel { padding:28px 22px calc(28px + env(safe-area-inset-bottom)); }
+  .generating .generating-logo { height:92px; margin-bottom:17px; width:92px; }
+  .generating .panel h1 { font-size:clamp(43px,13vw,62px); }
+
+  .workspace .stage { min-height:100svh; }
+  .workspace .canvas { height:100svh; min-height:100svh; }
+  .workspace .brand { left:max(16px, env(safe-area-inset-left)); top:max(14px, env(safe-area-inset-top)); }
+  .workspace .brand-logo { height:54px; width:54px; }
+  .workspace .atlas-trigger { min-height:44px; right:max(16px, env(safe-area-inset-right)); top:max(14px, env(safe-area-inset-top)); }
+  .workspace .atlas-trigger > span:last-of-type small { display:none; }
+  .workspace .atlas-trigger > span:last-of-type strong { font-size:11px; }
+  .workspace .reflection-orbit { display:none; }
+  .workspace .toolbar { left:16px; right:16px; top:calc(72px + env(safe-area-inset-top)); transform:none; width:auto; }
+  .workspace .search { flex:1; min-width:0; }
+  .workspace .search input { flex:1; font-size:16px; width:auto; }
+  .workspace .actions { flex:0 0 auto; }
+  .workspace .actions button { height:44px; min-width:44px; padding:0 11px; }
+  .workspace .save { font-size:0 !important; }
+  .workspace .seed { font-size:0; padding:0 !important; }
+  .workspace .seed span { font-size:22px; }
+  .workspace .field-dock { bottom:calc(14px + env(safe-area-inset-bottom)); left:16px; max-width:none; right:16px; width:auto; }
+  .workspace .dock-heading { margin-left:3px; }
+  .workspace .primary-tool { min-height:66px; padding:12px; }
+  .workspace .primary-tool strong { font-size:17px; }
+  .workspace .tool-row button { min-height:44px; padding:9px; }
+  .workspace .canvas-hint { display:none; }
+  .workspace .inspector { bottom:168px; left:16px; max-height:calc(100svh - 310px); overflow:auto; right:16px; width:auto; }
+  .workspace .atlas-backdrop { align-items:flex-end; padding:14px; }
+  .workspace .atlas { border-radius:24px 24px 10px 24px; max-height:calc(100svh - 28px); overflow:auto; padding:24px 18px calc(20px + env(safe-area-inset-bottom)); width:100%; }
+  .workspace .atlas header { gap:14px; }
+  .workspace .atlas h2 { font-size:clamp(33px,11vw,46px); }
+  .workspace .atlas-intro { font-size:14px; line-height:1.55; margin:15px 0 20px; }
+  .workspace .atlas nav { gap:8px; }
+  .workspace .atlas nav button { min-height:58px; padding:10px 11px; }
+  .workspace .atlas footer { font-size:9px; margin-top:17px; padding-top:14px; }
+
+  .surface { min-height:100svh; padding:calc(106px + env(safe-area-inset-top)) 16px calc(35px + env(safe-area-inset-bottom)); }
+  .surface-header { gap:18px; margin-bottom:26px; }
+  .surface h1 { font-size:clamp(39px,12vw,59px); }
+  .surface-header p { font-size:15px; line-height:1.58; }
+  .surface .exit { justify-content:center; min-height:46px; width:100%; }
+  .surface-content { gap:13px; padding-bottom:15px; }
+  .surface .project-card,.surface .focus-intro,.surface .focus-result,.surface .reflection-form,.surface .project-room,.surface .empty-state,.surface .create-card { border-radius:20px 20px 7px 20px; padding:20px; }
+  .surface .project-card { min-height:238px; }
+  .surface .project-card h2 { font-size:29px; margin-top:22px; }
+  .surface .empty-state,.surface .focus-intro,.surface .reflection-form,.surface .project-room { padding:26px 20px; }
+  .surface .next-action > div,.surface .reflection-form > div { align-items:stretch; flex-direction:column; gap:10px; }
+  .surface .next-action > div .accent,.surface .reflection-form > div .accent { margin-top:0; min-height:46px; }
+  .surface .accent { min-height:46px; padding:12px 17px; }
+  .surface .project-pills { gap:7px; }
+  .surface .project-pills button { min-height:40px; }
+  .surface .offline-state { padding:27px 20px; }
+
+  .blueprint,.atelier,.studio,.writing-room,.world-composer,.board-tool,.garden,.sound-lab { padding:22px 17px !important; }
+  .blueprint h2,.atelier h2,.studio h2,.writing-room h3,.world-composer h3,.board-tool h3,.garden h3,.sound-lab h3 { font-size:clamp(31px,10vw,45px) !important; }
+  .map-board,.board { min-height:330px !important; }
+  .world-stage,.canvas-stage { min-height:320px !important; }
+  .writing-surface textarea { min-height:250px; font-size:17px; line-height:1.65; }
+  .composer { border-radius:23px 23px 7px 23px; padding:27px 18px calc(24px + env(safe-area-inset-bottom)); }
+  .composer footer { align-items:stretch; flex-direction:column-reverse; }
+  .composer footer button { min-height:46px; width:100%; }
+}
+
+@media (max-width: 390px) {
+  .intro .content { padding-left:18px; padding-right:18px; }
+  .intro .hero-logo { height:100px; width:100px; }
+  .identity { padding-left:16px !important; padding-right:16px !important; }
+  .identity .home-link { font-size:0; min-width:44px; padding:0; justify-content:center; }
+  .identity .home-link span { font-size:17px; }
+  .identity .question h1 { font-size:clamp(42px,13vw,54px); }
+  .workspace .toolbar { left:12px; right:12px; }
+  .workspace .brand { left:max(12px, env(safe-area-inset-left)); }
+  .workspace .atlas-trigger { right:max(12px, env(safe-area-inset-right)); }
+  .workspace .atlas-trigger > span:last-of-type { display:none; }
+  .workspace .field-dock { left:12px; right:12px; }
+  .workspace .primary-tool small { font-size:6px; }
+  .workspace .primary-tool strong { font-size:16px; }
+  .workspace .tool-row small { font-size:7px; }
+  .surface { padding-left:12px; padding-right:12px; }
+  .surface .project-card,.surface .focus-intro,.surface .focus-result,.surface .reflection-form,.surface .project-room,.surface .empty-state,.surface .create-card { padding:18px; }
+}
+
+@media (hover: none) {
+  button:active { transform:scale(.975); }
+  .workspace button:hover,.surface button:hover,.identity button:hover,.intro button:hover,.threshold button:hover { transform:none; }
+}

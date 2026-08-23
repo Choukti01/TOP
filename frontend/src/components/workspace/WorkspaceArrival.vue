@@ -5,7 +5,7 @@
     <div class="arrival-lines" aria-hidden="true"><i></i><i></i><i></i></div>
 
     <div class="arrival-copy">
-      <img class="arrival-logo" src="/top-logo-transparent.png" alt="TOP" />
+      <img class="arrival-logo" :src="topLogoUrl" alt="TOP" />
       <span class="eyebrow">YOUR FIELD IS LIVE</span>
       <h1>Entering the<br /><em>possible.</em></h1>
       <p>Projects, questions, and the next real move are waiting in one place.</p>
@@ -24,6 +24,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from "vue";
 import ThreeField from "../ThreeField.vue";
+import { topLogoUrl } from "../../lib/brand";
 
 const emit = defineEmits<{ complete: [] }>();
 let timer: ReturnType<typeof window.setTimeout> | undefined;

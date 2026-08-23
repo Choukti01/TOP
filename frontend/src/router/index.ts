@@ -7,7 +7,7 @@ import Workspace from "../components/workspace/Workspace.vue";
 
 const router = createRouter({
 
-    history: createWebHistory(),
+    history: createWebHistory(import.meta.env.BASE_URL),
 
     scrollBehavior() {
         return { top: 0 };

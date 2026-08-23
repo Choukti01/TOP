@@ -1,7 +1,7 @@
 <template>
   <aside class="atlas-layer">
     <button class="brand" type="button" aria-label="Return to TOP universe" @click="returnToUniverse">
-      <img class="brand-logo" src="/top-logo-transparent.png" alt="TOP" />
+      <img class="brand-logo" :src="topLogoUrl" alt="TOP" />
     </button>
 
     <button
@@ -63,6 +63,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 
+import { topLogoUrl } from "../../lib/brand";
 import { WorkspaceState, type WorkspaceSection } from "./WorkspaceState";
 import { workspaceEngine } from "./WorkspaceEngine";
 

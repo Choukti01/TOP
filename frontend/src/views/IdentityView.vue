@@ -8,7 +8,7 @@
     </svg>
 
     <header class="masthead">
-      <button class="brand" type="button" aria-label="Back to TOP home" @click="router.push('/')"><img src="/top-logo-transparent.png" alt="TOP" /></button>
+      <button class="brand" type="button" aria-label="Back to TOP home" @click="router.push('/')"><img :src="topLogoUrl" alt="TOP" /></button>
       <p class="route-label">YOUR FIELD</p>
       <button class="home-link" type="button" @click="router.push('/')"><span>←</span> Back to home</button>
     </header>
@@ -77,6 +77,7 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import ThreeField from "../components/ThreeField.vue";
+import { topLogoUrl } from "../lib/brand";
 import "./IdentityDirections.css";
 
 type DirectionCard = { title: string; copy: string };

@@ -9,7 +9,7 @@
     </svg>
 
     <main class="panel">
-      <img class="generating-logo" src="/top-logo-transparent.png" alt="TOP" />
+      <img class="generating-logo" :src="topLogoUrl" alt="TOP" />
       <span class="eyebrow">PREPARING YOUR STARTING POINT</span>
       <h1>The field is<br /><em>taking shape.</em></h1>
       <p>This sets up your local starting point, then opens the workspace where the real practice begins.</p>
@@ -28,6 +28,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import ThreeField from "../components/ThreeField.vue";
+import { topLogoUrl } from "../lib/brand";
 
 const router = useRouter();
 const progress = ref(0);

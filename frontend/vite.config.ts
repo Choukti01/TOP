@@ -6,6 +6,8 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // GitHub Pages publishes this project at /TOP/ while local development stays at /.
+  base: process.env.GITHUB_ACTIONS ? "/TOP/" : "/",
   plugins: [
     vue(),
     vueDevTools(),

@@ -7,7 +7,7 @@
     </svg>
 
     <div class="content">
-      <img class="hero-logo" src="/top-logo-transparent.png" alt="TOP" />
+      <img class="hero-logo" :src="topLogoUrl" alt="TOP" />
       <span class="eyebrow">A DIFFERENT RELATIONSHIP WITH TECHNOLOGY</span>
       <h1>Make your real life<br /><em>more possible.</em></h1>
       <p>TOP is a place to turn curiosity into craft, ideas into projects, and attention into a life that feels like yours.</p>
@@ -22,6 +22,7 @@
 
 <script setup lang="ts">
 import { useExperienceStore } from "../stores/experience";
+import { topLogoUrl } from "../lib/brand";
 
 const experience = useExperienceStore();
 

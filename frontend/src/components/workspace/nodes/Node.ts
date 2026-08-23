@@ -1,6 +1,6 @@
-export type WorkspaceNodeKind = "world" | "venture" | "studio" | "learning" | "seed";
+export type WorkspaceNodeKind = "project" | "seed";
 
-export type WorkspaceNodeStatus = "active" | "growing" | "planning";
+export type WorkspaceNodeStatus = "planning" | "active" | "paused" | "completed";
 
 export interface WorkspaceNode {
 

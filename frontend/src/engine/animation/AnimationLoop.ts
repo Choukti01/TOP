@@ -7,6 +7,10 @@ export class AnimationLoop {
 
     private previous = performance.now();
 
+    private frameId: number | undefined;
+
+    private running = false;
+
     constructor(
 
         private engine: Engine,
@@ -18,9 +22,15 @@ export class AnimationLoop {
 
     public start(): void {
 
+        if (this.running) return;
+
+        this.running = true;
+
         const animate = () => {
 
-            requestAnimationFrame(animate);
+            if (!this.running) return;
+
+            this.frameId = requestAnimationFrame(animate);
 
             // =====================================================
             // Delta Time
@@ -53,6 +63,20 @@ export class AnimationLoop {
         };
 
         animate();
+
+    }
+
+    public stop(): void {
+
+        this.running = false;
+
+        if (this.frameId !== undefined) {
+
+            cancelAnimationFrame(this.frameId);
+
+            this.frameId = undefined;
+
+        }
 
     }
 

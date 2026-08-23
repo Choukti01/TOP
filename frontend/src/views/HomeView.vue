@@ -6,17 +6,19 @@
 
 <script setup lang="ts">
 
-import { ref,onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 
 import { Engine } from "../engine/core/Engine";
 
 const container = ref<HTMLElement>();
 
+let engine: Engine | undefined;
+
 onMounted(()=>{
 
     if(container.value){
 
-        const engine = new Engine(
+        engine = new Engine(
 
             container.value
 
@@ -25,6 +27,12 @@ onMounted(()=>{
         engine.start();
 
     }
+
+});
+
+onUnmounted(()=>{
+
+    engine?.dispose();
 
 });
 

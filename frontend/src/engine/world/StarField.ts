@@ -40,13 +40,13 @@ export class StarField {
 
             } else if (t < 0.85) {
 
-                // Blue star
-                color.setRGB(0.75, 0.87, 1.0);
+                // Cyan star
+                color.setRGB(0.38, 0.9, 1.0);
 
             } else {
 
-                // Warm star
-                color.setRGB(1.0, 0.94, 0.80);
+                // Violet star
+                color.setRGB(0.62, 0.49, 1.0);
 
             }
 

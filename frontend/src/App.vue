@@ -12,6 +12,7 @@
 import { useRoute } from "vue-router";
 
 import ExperienceView from "./views/ExperienceView.vue";
+import "./styles/top-spectral.css";
 
 const route = useRoute();
 </script>
@@ -20,7 +21,7 @@ const route = useRoute();
 
 :root {
   color-scheme: dark;
-  font-family: Inter, Aptos, "Segoe UI", sans-serif;
+  font-family: var(--top-body);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -36,30 +37,33 @@ body,
 #app {
   width: 100%;
   min-width: 320px;
-  height: 100%;
   margin: 0;
-  overflow: hidden;
-  background: #030712;
+  background: var(--top-void);
+}
+
+html {
+  min-height: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
-  color: #f2f7ff;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+#app {
+  min-height: 100dvh;
+  overflow: visible;
+}
+
+body {
+  color: var(--top-ink);
 }
 
 button,
 input {
   font: inherit;
-}
-
-button:focus-visible,
-input:focus-visible {
-  outline: 2px solid #76c8ff;
-  outline-offset: 3px;
-}
-
-::selection {
-  background: rgba(116, 197, 255, 0.32);
-  color: #fff;
 }
 
 </style>

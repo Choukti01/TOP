@@ -4,6 +4,8 @@ export class Renderer {
 
     public renderer: THREE.WebGLRenderer;
 
+    private readonly resizeHandler = (): void => this.resize();
+
     constructor(container: HTMLElement) {
 
         this.renderer = new THREE.WebGLRenderer({
@@ -40,7 +42,7 @@ export class Renderer {
 
         window.addEventListener(
             "resize",
-            () => this.resize()
+            this.resizeHandler
         );
 
     }
@@ -72,6 +74,19 @@ export class Renderer {
             camera
 
         );
+
+    }
+
+    public dispose(): void {
+
+        window.removeEventListener(
+            "resize",
+            this.resizeHandler
+        );
+
+        this.renderer.dispose();
+
+        this.renderer.domElement.remove();
 
     }
 

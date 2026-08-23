@@ -61,35 +61,35 @@ export class PlanetGenerator {
             // Oceans
             if (elevation < -0.12) {
 
-                color = new THREE.Color(0x0b3d91);
+                color = new THREE.Color(0x11184a);
 
             }
 
             // Beaches
             else if (elevation < -0.04) {
 
-                color = new THREE.Color(0xd9d19a);
+                color = new THREE.Color(0x4d66bd);
 
             }
 
             // Grasslands
             else if (elevation < 0.15) {
 
-                color = new THREE.Color(0x3d8b3d);
+                color = new THREE.Color(0x2f7e9c);
 
             }
 
             // Mountains
             else if (elevation < 0.32) {
 
-                color = new THREE.Color(0x666666);
+                color = new THREE.Color(0x513a9b);
 
             }
 
             // Snow
             else {
 
-                color = new THREE.Color(0xffffff);
+                color = new THREE.Color(0xb9e9ff);
 
             }
 

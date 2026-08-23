@@ -3,11 +3,5 @@
 </template>
 
 <style scoped>
-.logo {
-  color: #70b8ff;
-  font-size: 1.5rem;
-  font-weight: 300;
-  letter-spacing: 0.42em;
-  line-height: 1;
-}
+.logo { color:var(--top-ink); font-family:var(--top-display); font-size:1.6rem; font-weight:800; letter-spacing:.1em; line-height:1; text-shadow:0 0 22px rgba(98,230,255,.22); }
 </style>

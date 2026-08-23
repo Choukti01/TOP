@@ -14,7 +14,7 @@ export class Atmosphere {
 
         const material = new THREE.MeshBasicMaterial({
 
-            color: 0x66ccff,
+            color: 0x62e6ff,
 
             transparent: true,
 

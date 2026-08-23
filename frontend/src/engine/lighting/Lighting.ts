@@ -20,9 +20,9 @@ export class Lighting {
 
             new THREE.HemisphereLight(
 
-                0x87ceeb,
+                0x8d7cff,
 
-                0x202020,
+                0x070a1d,
 
                 0.55
 

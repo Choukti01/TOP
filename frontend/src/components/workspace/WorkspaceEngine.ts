@@ -1,375 +1,238 @@
-import { WorkspaceState } from "./WorkspaceState";
-
 import {
-    createWorkspaceSeed,
-    getWorkspaceDashboard,
-    getWorkspaceOverview
+  createWorkspaceProject,
+  getWorkspaceDashboard,
+  getWorkspaceOverview,
+  updateWorkspaceProject,
+  type ProjectDirection,
+  type WorkspaceProject
 } from "../../lib/api";
-
-import { NodeSelection } from "./nodes/NodeSelection";
+import { WorkspaceState } from "./WorkspaceState";
 import { NodeDragging } from "./nodes/NodeDragging";
 import type { WorkspaceNode } from "./nodes/Node";
+import { NodeSelection } from "./nodes/NodeSelection";
+import type { WorkspaceSection } from "./WorkspaceState";
 
 class WorkspaceEngine {
+  private selection = new NodeSelection();
+  private dragging = new NodeDragging();
+  private suppressNextProjectOpen = false;
 
-    private selection = new NodeSelection();
+  public select(id: string): void {
+    this.selection.select(WorkspaceState.nodes.nodes, id);
+    WorkspaceState.selectedNodeId = id;
+    this.save();
+  }
 
-    private dragging = new NodeDragging();
+  public clearSelection(): void {
+    for (const node of WorkspaceState.nodes.nodes) node.selected = false;
+    WorkspaceState.selectedNodeId = null;
+  }
 
-    public select(id:string){
+  public openProject(id: string): void {
+    WorkspaceState.activeProjectId = id;
+    WorkspaceState.activeSection = "Project";
+    this.clearSelection();
+    this.triggerMotion("action");
+    this.scrollToSurface();
+  }
 
-        this.selection.select(
+  public openSection(section: WorkspaceSection, returnTo?: WorkspaceSection): void {
+    WorkspaceState.activeSection = section;
+    if (section !== "Project") WorkspaceState.activeProjectId = null;
+    WorkspaceState.returnSection = returnTo ?? null;
+    this.triggerMotion("navigation");
+    this.scrollToSurface();
+  }
 
-            WorkspaceState.nodes.nodes,
+  public beginWithPack(draft: {
+    title: string;
+    purpose: string;
+    direction: ProjectDirection;
+    nextAction: string;
+  }): void {
+    WorkspaceState.projectDraft = { ...draft };
+    WorkspaceState.projectComposerOpen = true;
+    this.triggerMotion("action");
+  }
 
-            id
+  public triggerMotion(kind: "arrival" | "navigation" | "action"): void {
+    WorkspaceState.motionKind = kind;
+    WorkspaceState.motionToken += 1;
+  }
 
-        );
+  public dragStart(node: WorkspaceNode, x: number, y: number): void {
+    this.dragging.begin(node, x, y);
+  }
 
-        WorkspaceState.selectedNodeId = id;
+  public drag(x: number, y: number): void {
+    this.dragging.move(x, y);
+  }
 
-        this.save();
+  public dragEnd(): void {
+    const result = this.dragging.end();
+    if (!result.wasActive) return;
 
+    this.suppressNextProjectOpen = result.didMove;
+    if (result.didMove) {
+      window.setTimeout(() => { this.suppressNextProjectOpen = false; }, 0);
     }
+    this.save();
+  }
 
-    public clearSelection(){
+  public canOpenDraggedProject(): boolean {
+    if (!this.suppressNextProjectOpen) return true;
+    this.suppressNextProjectOpen = false;
+    return false;
+  }
 
-        for(const node of WorkspaceState.nodes.nodes){
+  public async createProject(input: {
+    title: string;
+    purpose: string;
+    direction: ProjectDirection;
+    nextAction: string;
+  }): Promise<void> {
+    const { project } = await createWorkspaceProject(input);
+    const node = this.toNode(project);
 
-            node.selected = false;
+    WorkspaceState.nodes.nodes = [...WorkspaceState.nodes.nodes.filter((item) => item.id !== node.id), node];
+    if (WorkspaceState.dashboard) WorkspaceState.dashboard.projects.push(project);
 
-        }
+    WorkspaceState.projectComposerOpen = false;
+    WorkspaceState.projectDraft = null;
+    WorkspaceState.activeProjectId = project.id;
+    WorkspaceState.activeSection = "Project";
+    this.save();
+    this.notify("Your project has a place in the field.");
+    this.triggerMotion("action");
+  }
 
-        WorkspaceState.selectedNodeId = null;
+  public async saveProjectNextAction(projectId: string, nextAction: string): Promise<void> {
+    const { project } = await updateWorkspaceProject(projectId, { nextAction });
+    const projectIndex = WorkspaceState.dashboard?.projects.findIndex((item) => item.id === projectId) ?? -1;
 
+    if (WorkspaceState.dashboard && projectIndex >= 0) WorkspaceState.dashboard.projects[projectIndex] = project;
+
+    const nodeIndex = WorkspaceState.nodes.nodes.findIndex((item) => item.id === projectId);
+    if (nodeIndex >= 0) WorkspaceState.nodes.nodes[nodeIndex] = this.toNode(project);
+
+    this.save();
+    this.notify("Next move saved. Keep the work small enough to begin.");
+  }
+
+  public save(): boolean {
+    try {
+      localStorage.setItem("top-workspace", JSON.stringify(WorkspaceState.nodes.nodes));
+      return true;
+    } catch {
+      this.notify("Your device could not hold this change locally.");
+      return false;
     }
+  }
 
-    public dragStart(
+  public notify(message: string): void {
+    WorkspaceState.toast = message;
+    window.setTimeout(() => {
+      if (WorkspaceState.toast === message) WorkspaceState.toast = "";
+    }, 3_400);
+  }
 
-        node:WorkspaceNode,
-
-        x:number,
-
-        y:number
-
-    ){
-
-        this.dragging.begin(
-
-            node,
-
-            x,
-
-            y
-
-        );
-
+  public async load(): Promise<void> {
+    WorkspaceState.syncStatus = "loading";
+    let localWorldName: string | undefined;
+    try {
+      localWorldName = localStorage.getItem("top-world-name")?.trim() || undefined;
+    } catch {
+      this.notify("TOP cannot read local workspace settings in this browser.");
     }
+    if (localWorldName) WorkspaceState.worldName = localWorldName;
 
-    public drag(
+    const savedNodes = this.readSavedNodes();
 
-        x:number,
+    try {
+      const [overview, dashboard] = await Promise.all([getWorkspaceOverview(), getWorkspaceDashboard()]);
 
-        y:number
+      WorkspaceState.worldName = localWorldName || overview.world.name;
+      WorkspaceState.lastSyncedAt = overview.updatedAt;
+      WorkspaceState.syncStatus = "synced";
+      WorkspaceState.dashboard = dashboard;
+      WorkspaceState.dashboardStatus = "ready";
+      WorkspaceState.nodes.nodes = overview.nodes.map((node) => ({ ...node, selected: false }));
 
-    ){
-
-        this.dragging.move(
-
-            x,
-
-            y
-
-        );
-
-    }
-
-    public dragEnd(){
-
-        this.dragging.end();
-
-        this.save();
-
-    }
-
-    public async createSeed(title:string,description:string){
-
-        const { seed } =
-
-        await createWorkspaceSeed({ title, description });
-
-        const node:WorkspaceNode = {
-
-            ...seed,
-
-            selected:false
-
-        };
-
-        WorkspaceState.nodes.nodes.push(node);
-
-        WorkspaceState.seedComposerOpen = false;
-
+      if (WorkspaceState.activeProjectId && !dashboard.projects.some((project) => project.id === WorkspaceState.activeProjectId)) {
+        WorkspaceState.activeProjectId = null;
         WorkspaceState.activeSection = "Overview";
+      }
 
-        this.select(node.id);
-
-        this.notify("Seed planted in your universe.");
-
+      this.save();
+    } catch {
+      WorkspaceState.syncStatus = "offline";
+      WorkspaceState.dashboardStatus = "offline";
+      WorkspaceState.nodes.nodes = savedNodes;
     }
+  }
 
-    public save(){
+  private readSavedNodes(): WorkspaceNode[] {
+    try {
+      const saved = localStorage.getItem("top-workspace");
+      if (!saved) return [];
+      const parsed: unknown = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
 
-        localStorage.setItem(
+      const nodes = parsed
+        .filter((node): node is Partial<WorkspaceNode> => typeof node === "object" && node !== null)
+        .filter((node) => !this.isLegacyDemoNode(node))
+        .map((node) => this.normalizeNode(node));
 
-            "top-workspace",
-
-            JSON.stringify(
-
-                WorkspaceState.nodes.nodes
-
-            )
-
-        );
-
+      if (nodes.length !== parsed.length) localStorage.setItem("top-workspace", JSON.stringify(nodes));
+      return nodes;
+    } catch {
+      try { localStorage.removeItem("top-workspace"); } catch { /* Storage is unavailable. */ }
+      return [];
     }
-
-    public notify(message:string){
-
-        WorkspaceState.toast = message;
-
-        window.setTimeout(()=>{
-
-            if(WorkspaceState.toast === message){
-
-                WorkspaceState.toast = "";
-
-            }
-
-        },3_400);
-
-    }
-
-    public async load(){
-
-        WorkspaceState.syncStatus =
-
-        "loading";
-
-        const saved =
-
-        localStorage.getItem(
-
-            "top-workspace"
-
-        );
-
-        let savedNodes:Partial<WorkspaceNode>[] = [];
-
-        if(saved){
-
-            try{
-
-                const data:unknown =
-
-                JSON.parse(saved);
-
-                if(Array.isArray(data)){
-
-                    savedNodes = data as Partial<WorkspaceNode>[];
-
-                }
-
-            }catch{
-
-                localStorage.removeItem("top-workspace");
-
-            }
-
-        }
-
-        try{
-
-            const [overview,dashboard] =
-
-            await Promise.all([
-
-                getWorkspaceOverview(),
-
-                getWorkspaceDashboard()
-
-            ]);
-
-            WorkspaceState.worldName =
-
-            overview.world.name;
-
-            WorkspaceState.lastSyncedAt =
-
-            overview.updatedAt;
-
-            WorkspaceState.syncStatus =
-
-            "synced";
-
-            WorkspaceState.dashboard = dashboard;
-
-            WorkspaceState.dashboardStatus = "ready";
-
-            const remoteNodes =
-
-            overview.nodes.map((node)=>(
-
-                {
-
-                    ...node,
-
-                    selected:false
-
-                }
-
-            ));
-
-            if(savedNodes.length){
-
-                const restoredNodes = savedNodes.map((node)=>{
-
-                    const fallback =
-
-                    remoteNodes.find((remote)=>(
-
-                        remote.id === node.id ||
-                        remote.title === node.title
-
-                    ));
-
-                    return this.normalizeNode(node,fallback);
-
-                });
-
-                for(const remoteNode of remoteNodes){
-
-                    if(!restoredNodes.some((node)=>(
-
-                        node.id === remoteNode.id ||
-                        node.title === remoteNode.title
-
-                    ))){
-
-                        restoredNodes.push(remoteNode);
-
-                    }
-
-                }
-
-                WorkspaceState.nodes.nodes = restoredNodes;
-
-            }else{
-
-                WorkspaceState.nodes.nodes = remoteNodes;
-
-            }
-
-        }catch{
-
-            // The workspace remains available from local storage while the API is offline.
-
-            WorkspaceState.syncStatus =
-
-            "offline";
-
-            WorkspaceState.dashboardStatus = "offline";
-
-            if(savedNodes.length){
-
-                WorkspaceState.nodes.nodes =
-
-                savedNodes.map((node)=>(
-
-                    this.normalizeNode(node)
-
-                ));
-
-            }
-
-        }
-
-    }
-
-    private normalizeNode(
-
-        node:Partial<WorkspaceNode>,
-
-        fallback?:WorkspaceNode
-
-    ):WorkspaceNode{
-
-        const usesLegacyPosition =
-
-        this.usesLegacyDefaultPosition(node);
-
-        return {
-
-            id:node.id ?? fallback?.id ?? crypto.randomUUID(),
-
-            title:node.title ?? fallback?.title ?? "Untitled Seed",
-
-            description:node.description ?? fallback?.description ??
-            "A new idea ready to become a meaningful project.",
-
-            kind:node.kind ?? fallback?.kind ?? "seed",
-
-            status:node.status ?? fallback?.status ?? "planning",
-
-            progress:node.progress ?? fallback?.progress ?? 5,
-
-            color:node.color ?? fallback?.color ?? "#ef76ab",
-
-            x:usesLegacyPosition ? fallback?.x ?? 0 : node.x ?? fallback?.x ?? 0,
-
-            y:usesLegacyPosition ? fallback?.y ?? 0 : node.y ?? fallback?.y ?? 0,
-
-            width:node.width ?? fallback?.width ?? 250,
-
-            height:node.height ?? fallback?.height ?? 120,
-
-            selected:false
-
-        };
-
-    }
-
-    private usesLegacyDefaultPosition(node:Partial<WorkspaceNode>):boolean{
-
-        const legacyPositions:Record<string,{ x:number; y:number }> = {
-
-            TOP:{ x:0, y:0 },
-
-            rifKANDO:{ x:520, y:160 },
-
-            BlueRif:{ x:-420, y:-250 },
-
-            Deutschio:{ x:-620, y:260 }
-
-        };
-
-        const legacyPosition =
-
-        node.title ? legacyPositions[node.title] : undefined;
-
-        return Boolean(
-
-            legacyPosition &&
-
-            node.x === legacyPosition.x &&
-
-            node.y === legacyPosition.y
-
-        );
-
-    }
-
+  }
+
+  private normalizeNode(node: Partial<WorkspaceNode>): WorkspaceNode {
+    return {
+      id: node.id ?? crypto.randomUUID(),
+      title: node.title ?? "Untitled project",
+      description: node.description ?? "A project waiting for a clear next action.",
+      kind: node.kind === "project" ? "project" : "seed",
+      status: node.status === "active" || node.status === "paused" || node.status === "completed" ? node.status : "planning",
+      progress: typeof node.progress === "number" ? node.progress : 0,
+      color: node.color ?? "#dfae63",
+      x: typeof node.x === "number" ? node.x : 0,
+      y: typeof node.y === "number" ? node.y : 0,
+      width: typeof node.width === "number" ? node.width : 270,
+      height: typeof node.height === "number" ? node.height : 168,
+      selected: false
+    };
+  }
+
+  private isLegacyDemoNode(node: Partial<WorkspaceNode>): boolean {
+    return ["TOP", "rifKANDO", "BlueRif", "Deutschio"].includes(node.title ?? "");
+  }
+
+  private toNode(project: WorkspaceProject): WorkspaceNode {
+    return {
+      id: project.id,
+      title: project.title,
+      description: project.purpose,
+      kind: project.kind,
+      status: project.status,
+      progress: project.progress,
+      color: project.color,
+      x: project.x,
+      y: project.y,
+      width: project.width,
+      height: project.height,
+      selected: false
+    };
+  }
+
+  private scrollToSurface(): void {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
+  }
 }
 
-export const workspaceEngine =
-new WorkspaceEngine();
+export const workspaceEngine = new WorkspaceEngine();

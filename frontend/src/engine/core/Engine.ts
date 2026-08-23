@@ -94,4 +94,12 @@ export class Engine {
 
     }
 
+    public dispose(): void {
+
+        this.animation.stop();
+
+        this.renderer.dispose();
+
+    }
+
 }

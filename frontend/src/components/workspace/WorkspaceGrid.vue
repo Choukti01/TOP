@@ -1,59 +1,13 @@
 <template>
-
-<div class="grid"></div>
-
+  <div class="field-lines" aria-hidden="true"><span></span><i></i></div>
 </template>
 
 <style scoped>
+.field-lines { inset:-18%; mask-image:radial-gradient(ellipse at center,black 7%,rgba(0,0,0,.66) 48%,transparent 74%); pointer-events:none; position:absolute; }
+.field-lines::before,.field-lines::after { border:1px solid rgba(224,184,119,.11); border-radius:47% 53% 62% 38% / 38% 42% 58% 62%; content:""; height:420px; left:50%; position:absolute; top:50%; transform:translate(-50%,-50%) rotate(-17deg); width:700px; }.field-lines::after { border-color:rgba(157,178,126,.12); height:590px; transform:translate(-50%,-50%) rotate(26deg); width:440px; }
+.field-lines span { animation:field-breathe 15s ease-in-out infinite alternate; background:repeating-radial-gradient(ellipse at center,transparent 0 48px,rgba(235,197,136,.08) 49px 50px,transparent 51px 94px); border-radius:46% 54% 38% 62% / 60% 43% 57% 40%; height:630px; left:50%; position:absolute; top:50%; transform:translate(-50%,-50%) rotate(15deg); width:920px; }.field-lines i { background:radial-gradient(ellipse,rgba(226,176,102,.12),transparent 66%); border-radius:50%; height:560px; left:50%; position:absolute; top:50%; transform:translate(-50%,-50%); width:560px; }
+@keyframes field-breathe { to { opacity:.36; transform:translate(-50%,-50%) rotate(21deg) scale(1.08); } }
+@media (prefers-reduced-motion:reduce) { .field-lines span { animation:none; } }
 
-.grid{
-
-position:absolute;
-
-inset:0;
-
-background-image:
-
-radial-gradient(circle at center,rgba(100,184,255,.08),transparent 42%),
-
-linear-gradient(rgba(158,196,244,.045) 1px,transparent 1px),
-
-linear-gradient(90deg,rgba(158,196,244,.045) 1px,transparent 1px);
-
-background-size:auto,48px 48px,48px 48px;
-
-mask-image:linear-gradient(to bottom,transparent,black 13%,black 86%,transparent);
-
-opacity:.72;
-
-pointer-events:none;
-
-}
-
-.grid::after{
-
-animation:grid-breathe 11s ease-in-out infinite alternate;
-
-background:radial-gradient(circle at 50% 50%,rgba(112,184,255,.08),transparent 44%);
-
-content:"";
-
-inset:0;
-
-position:absolute;
-
-}
-
-@keyframes grid-breathe{
-
-to{opacity:.35;transform:scale(1.08);}
-
-}
-
-@media (prefers-reduced-motion:reduce){
-
-.grid::after{animation:none;}
-
-}
-
+.field-lines::before,.field-lines::after { border-color:rgba(123,153,255,.16); }.field-lines::after { border-color:rgba(98,230,255,.14); }.field-lines span { background:repeating-radial-gradient(ellipse at center,transparent 0 48px,rgba(113,151,255,.1) 49px 50px,transparent 51px 94px); }.field-lines i { background:radial-gradient(ellipse,rgba(101,91,255,.16),transparent 66%); }
 </style>

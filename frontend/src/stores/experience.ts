@@ -26,6 +26,14 @@ export const useExperienceStore = defineStore(
 
         actions: {
 
+           showIntro(){
+
+this.state =
+
+ExperienceState.INTRO;
+
+},
+
            enter(){
 
 this.state =

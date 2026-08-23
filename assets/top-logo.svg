@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">TOP logo</title>
+  <desc id="desc">TOP wordmark with a luminous orbital field mark.</desc>
+  <defs>
+    <linearGradient id="wordmark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F6FAFF"/>
+      <stop offset="0.48" stop-color="#B9D7FF"/>
+      <stop offset="1" stop-color="#AB98FF"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#62E6FF"/>
+      <stop offset="0.54" stop-color="#9C7CFF"/>
+      <stop offset="1" stop-color="#FF72BD"/>
+    </linearGradient>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <g transform="translate(180 180)" fill="none" stroke-linecap="round">
+    <circle r="108" stroke="#62E6FF" stroke-opacity=".25" stroke-width="2"/>
+    <circle r="69" stroke="#9C7CFF" stroke-opacity=".5" stroke-width="2"/>
+    <path d="M-116 0H116M0-116V116" stroke="url(#orbit)" stroke-opacity=".82" stroke-width="3"/>
+    <ellipse rx="124" ry="51" stroke="url(#orbit)" stroke-width="3" transform="rotate(-29)"/>
+    <ellipse rx="51" ry="124" stroke="#62E6FF" stroke-opacity=".48" stroke-width="2" transform="rotate(38)"/>
+    <circle cx="69" cy="-70" r="11" fill="#D9FF71" stroke="#F6FFDC" stroke-width="2" filter="url(#glow)"/>
+    <circle cx="-54" cy="69" r="6" fill="#62E6FF" filter="url(#glow)"/>
+    <circle cx="0" cy="0" r="9" fill="#F4F8FF" filter="url(#glow)"/>
+  </g>
+
+  <text x="350" y="203" fill="url(#wordmark)" font-family="Syne, Arial Black, Arial, sans-serif" font-size="182" font-weight="800" letter-spacing="-12">TOP</text>
+  <path d="M360 242H1020" stroke="url(#orbit)" stroke-opacity=".72" stroke-width="3"/>
+  <text x="363" y="280" fill="#9FB3E5" font-family="Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="9">A FIELD FOR FLOURISHING</text>
+</svg>

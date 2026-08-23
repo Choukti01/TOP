@@ -1,16 +1,16 @@
 import { reactive } from "vue";
 
 import { NodeManager } from "./nodes/NodeManager";
-import type { WorkspaceDashboard } from "../../lib/api";
+import type { ProjectDirection, WorkspaceDashboard } from "../../lib/api";
 
 export type WorkspaceSection =
     | "Overview"
     | "Projects"
-    | "Knowledge"
-    | "Research"
+    | "Project"
+    | "Atelier"
+    | "Studio"
+    | "Blueprint"
     | "AI"
-    | "Assets"
-    | "Worlds"
     | "Reflection";
 
 export const WorkspaceState=reactive({
@@ -33,11 +33,26 @@ export const WorkspaceState=reactive({
 
     activeSection:"Overview" as WorkspaceSection,
 
+    returnSection:null as WorkspaceSection | null,
+
+    activeProjectId:null as string | null,
+
     dashboard:null as WorkspaceDashboard | null,
 
     dashboardStatus:"loading" as "loading" | "ready" | "offline",
 
-    seedComposerOpen:false,
+    projectComposerOpen:false,
+
+    projectDraft:null as null | {
+        title:string,
+        purpose:string,
+        direction:ProjectDirection,
+        nextAction:string
+    },
+
+    motionToken:0,
+
+    motionKind:"idle" as "idle" | "arrival" | "navigation" | "action",
 
     toast:"" as string,
 

@@ -1,5 +1,6 @@
-export type WorkspaceNodeKind = "world" | "venture" | "studio" | "learning" | "seed";
-export type WorkspaceNodeStatus = "active" | "growing" | "planning";
+export type WorkspaceNodeKind = "project" | "seed";
+export type WorkspaceNodeStatus = "planning" | "active" | "paused" | "completed";
+export type ProjectDirection = "personal" | "creative" | "learning" | "community" | "venture" | "other";
 
 export interface WorkspaceNodeRecord {
   id: string;
@@ -15,154 +16,79 @@ export interface WorkspaceNodeRecord {
   height: number;
 }
 
-interface ProjectBrief {
-  id: string;
-  title: string;
-  category: string;
-  nextMove: string;
-  signal: string;
-  momentum: number;
+export interface WorkspaceProject extends WorkspaceNodeRecord {
+  direction: ProjectDirection;
+  purpose: string;
+  nextAction: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-const coreNodes: WorkspaceNodeRecord[] = [
-  {
-    id: "top",
-    title: "TOP",
-    description: "The creator universe where your ideas become real-world projects.",
-    kind: "world",
-    status: "active",
-    progress: 82,
-    color: "#70b8ff",
-    x: -25,
-    y: -35,
-    width: 250,
-    height: 120
-  },
-  {
-    id: "rifkando",
-    title: "rifKANDO",
-    description: "A multi-service platform connecting people to local opportunity.",
-    kind: "venture",
-    status: "growing",
-    progress: 64,
-    color: "#a68cff",
-    x: 180,
-    y: 125,
-    width: 250,
-    height: 120
-  },
-  {
-    id: "bluerif",
-    title: "BlueRif",
-    description: "A creative identity exploring culture, stories, and visual direction.",
-    kind: "studio",
-    status: "active",
-    progress: 46,
-    color: "#4dd4c6",
-    x: -180,
-    y: -155,
-    width: 250,
-    height: 120
-  },
-  {
-    id: "deutschio",
-    title: "Deutschio",
-    description: "A language-learning world built around meaningful daily practice.",
-    kind: "learning",
-    status: "planning",
-    progress: 28,
-    color: "#f3b35b",
-    x: -165,
-    y: 180,
-    width: 250,
-    height: 120
-  }
-];
+interface ProjectInput {
+  title: string;
+  purpose: string;
+  direction: ProjectDirection;
+  nextAction: string;
+}
 
-const projectBriefs: ProjectBrief[] = [
-  {
-    id: "rifkando",
-    title: "rifKANDO",
-    category: "Venture",
-    nextMove: "Define the first local partner journey.",
-    signal: "2 collaborators are ready to review it.",
-    momentum: 64
-  },
-  {
-    id: "bluerif",
-    title: "BlueRif",
-    category: "Studio",
-    nextMove: "Shape the visual story into three strong directions.",
-    signal: "Your visual language is ready for a first public artifact.",
-    momentum: 46
-  },
-  {
-    id: "deutschio",
-    title: "Deutschio",
-    category: "Learning world",
-    nextMove: "Design one daily practice people can finish in ten minutes.",
-    signal: "Start with the smallest useful learning ritual.",
-    momentum: 28
-  }
-];
-
-const seeds: WorkspaceNodeRecord[] = [];
+const projectColors = ["#dfae63", "#cc7b5b", "#9eb488", "#d4a46f", "#d78397", "#9db9b0"];
+const projects: WorkspaceProject[] = [];
 const reflections: Array<{ id: string; answer: string; createdAt: string }> = [];
 
 export function listWorkspaceNodes(): WorkspaceNodeRecord[] {
-  return [...coreNodes, ...seeds].map((node) => ({ ...node }));
+  return projects.map((project) => toNode(project));
 }
 
 export function getWorkspaceDashboard() {
   return {
-    dailyFocus: {
-      title: "Move one meaningful project forward.",
-      detail: "TOP is designed for progress you can carry into real life—not more time spent online."
-    },
-    projects: projectBriefs.map((project) => ({ ...project })),
-    knowledge: [
-      { id: "k1", title: "The craftsmanship principle", detail: "Quality compounds when you make time for revision.", format: "Field note" },
-      { id: "k2", title: "Designing a daily learning ritual", detail: "Make the first action small enough to repeat tomorrow.", format: "Practice" },
-      { id: "k3", title: "How good circles work", detail: "Small groups grow when contribution is visible and specific.", format: "Guide" }
-    ],
-    research: [
-      { id: "r1", title: "Where does local opportunity break down?", detail: "Map the gap between a person needing help and a person able to offer it." },
-      { id: "r2", title: "What makes language practice feel alive?", detail: "Collect moments where a learner used a new phrase in the real world." },
-      { id: "r3", title: "Which stories deserve a visual identity?", detail: "Look for cultural details that are precise, human, and ownable." }
-    ],
-    assets: [
-      { id: "a1", title: "TOP Manifesto", type: "Principle", detail: "The compass for every product decision." },
-      { id: "a2", title: "Project brief", type: "Template", detail: "Turn an intention into an accountable next move." },
-      { id: "a3", title: "Circle check-in", type: "Ritual", detail: "A short format for honest weekly support." }
-    ],
-    worlds: coreNodes.filter((node) => node.id !== "top").map((node) => ({
-      id: node.id,
-      title: node.title,
-      description: node.description,
-      color: node.color
-    })),
+    dailyFocus: null,
+    projects: projects.map((project) => ({ ...project })),
+    knowledge: [],
+    research: [],
+    assets: [],
+    worlds: [],
     reflectionCount: reflections.length
   };
 }
 
-export function createSeed(input: { title: string; description: string }): WorkspaceNodeRecord {
-  const index = seeds.length;
-  const node: WorkspaceNodeRecord = {
+export function createProject(input: ProjectInput): WorkspaceProject {
+  const index = projects.length;
+  const now = new Date().toISOString();
+  const angle = index * 2.399963229728653;
+  const radius = 120 + Math.floor(index / 4) * 110;
+
+  const project: WorkspaceProject = {
     id: crypto.randomUUID(),
     title: input.title,
-    description: input.description,
-    kind: "seed",
+    description: input.purpose,
+    purpose: input.purpose,
+    direction: input.direction,
+    nextAction: input.nextAction,
+    kind: "project",
     status: "planning",
-    progress: 5,
-    color: "#ef76ab",
-    x: 45 + (index % 3) * 68,
-    y: -145 + (index % 2) * 82,
-    width: 250,
-    height: 120
+    progress: 0,
+    color: projectColors[index % projectColors.length]!,
+    x: Math.round(Math.cos(angle) * radius),
+    y: Math.round(Math.sin(angle) * radius),
+    width: 270,
+    height: 168,
+    createdAt: now,
+    updatedAt: now
   };
 
-  seeds.push(node);
-  return { ...node };
+  projects.push(project);
+  return { ...project };
+}
+
+export function updateProject(projectId: string, input: { nextAction: string }): WorkspaceProject | null {
+  const project = projects.find((candidate) => candidate.id === projectId);
+
+  if (!project) return null;
+
+  project.nextAction = input.nextAction;
+  project.status = "active";
+  project.updatedAt = new Date().toISOString();
+  return { ...project };
 }
 
 export function saveReflection(answer: string) {
@@ -178,15 +104,22 @@ export function saveReflection(answer: string) {
 
 export function getFocus(projectId?: string) {
   const project = projectId
-    ? projectBriefs.find((candidate) => candidate.id === projectId)
-    : [...projectBriefs].sort((a, b) => a.momentum - b.momentum)[0];
+    ? projects.find((candidate) => candidate.id === projectId)
+    : projects.find((candidate) => candidate.status !== "completed") ?? projects[0];
 
-  const focus = project ?? projectBriefs[0]!;
+  if (!project) return null;
 
   return {
-    projectId: focus.id,
-    title: `A focused next move for ${focus.title}`,
-    action: focus.nextMove,
-    reason: `${focus.signal} Give it one deliberate block of attention before starting something new.`
+    projectId: project.id,
+    title: project.title,
+    action: project.nextAction || "Name one small next action that you can complete this week.",
+    reason: project.nextAction
+      ? "This is the action you chose. Protect enough time to finish it before adding more to the field."
+      : "A project becomes real when its next action is specific enough to do."
   };
+}
+
+function toNode(project: WorkspaceProject): WorkspaceNodeRecord {
+  const { direction: _direction, purpose: _purpose, nextAction: _nextAction, createdAt: _createdAt, updatedAt: _updatedAt, ...node } = project;
+  return { ...node };
 }

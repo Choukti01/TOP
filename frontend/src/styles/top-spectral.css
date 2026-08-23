@@ -1,0 +1,85 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Patrick+Hand&display=swap");
+
+:root {
+  --top-void: #060711;
+  --top-night: #0b0f20;
+  --top-panel: rgba(14, 19, 41, .74);
+  --top-ink: #f4f8ff;
+  --top-muted: #94a0bd;
+  --top-cyan: #62e6ff;
+  --top-violet: #9c7cff;
+  --top-lime: #d9ff71;
+  --top-pink: #ff72bd;
+  --top-line: rgba(151, 183, 255, .22);
+  --top-hand: "Patrick Hand", "Segoe Print", cursive;
+  --top-display: var(--top-hand);
+  --top-body: var(--top-hand);
+  --top-mono: "DM Mono", "Cascadia Mono", monospace;
+}
+
+:root,
+button,
+input,
+textarea,
+select { font-family: var(--top-body); }
+
+body {
+  background:
+    radial-gradient(circle at 10% 12%, rgba(85, 83, 255, .15), transparent 27%),
+    radial-gradient(circle at 87% 18%, rgba(73, 228, 255, .11), transparent 24%),
+    radial-gradient(circle at 60% 95%, rgba(255, 93, 183, .09), transparent 29%),
+    var(--top-void) !important;
+  color: var(--top-ink) !important;
+}
+
+#app { isolation: isolate; position: relative; }
+
+#app::before,
+#app::after {
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: fixed;
+  z-index: 10;
+}
+
+#app::before {
+  background: repeating-linear-gradient(0deg, rgba(184, 211, 255, .018) 0 1px, transparent 1px 5px);
+  mix-blend-mode: screen;
+  opacity: .38;
+}
+
+#app::after {
+  background: radial-gradient(ellipse at center, transparent 48%, rgba(0, 0, 0, .2) 100%);
+}
+
+button { -webkit-tap-highlight-color: transparent; }
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible { outline: 2px solid var(--top-cyan) !important; outline-offset: 4px; }
+
+::selection { background: rgba(98, 230, 255, .32) !important; color: white; }
+* { scrollbar-color: var(--top-violet) rgba(8, 10, 24, .72) !important; }
+*::-webkit-scrollbar-track { background: rgba(8, 10, 24, .72) !important; }
+*::-webkit-scrollbar-thumb { background: linear-gradient(var(--top-cyan), var(--top-violet), var(--top-pink)) !important; border-color: rgba(8, 10, 24, .72) !important; }
+
+@keyframes top-prism-shift {
+  0%, 100% { filter: hue-rotate(0deg); transform: translate3d(0, 0, 0); }
+  50% { filter: hue-rotate(17deg); transform: translate3d(0, -5px, 0); }
+}
+
+@keyframes top-signal-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(98, 230, 255, .25), 0 0 22px rgba(98, 230, 255, .16); }
+  55% { box-shadow: 0 0 0 9px rgba(98, 230, 255, 0), 0 0 34px rgba(156, 124, 255, .3); }
+}
+
+@keyframes top-glitch-flicker {
+  0%, 90%, 100% { opacity: 1; transform: none; }
+  91% { opacity: .72; transform: translateX(1px); }
+  93% { opacity: 1; transform: translateX(-1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+}

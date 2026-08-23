@@ -9,6 +9,10 @@ const router = createRouter({
 
     history: createWebHistory(),
 
+    scrollBehavior() {
+        return { top: 0 };
+    },
+
     routes: [
 
         {
@@ -39,6 +43,11 @@ const router = createRouter({
         {
             path: "/settings",
             redirect: "/workspace"
+        },
+
+        {
+            path: "/:pathMatch(.*)*",
+            redirect: "/"
         }
 
     ]

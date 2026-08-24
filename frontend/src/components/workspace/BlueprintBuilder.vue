@@ -30,11 +30,16 @@
     </div>
 
     <footer class="blueprint-footer"><p>{{ saveMessage || 'Drag any node to give the path a truer shape.' }}</p><button type="button" @click="persist('BLUEPRINT HELD LOCALLY')">Keep this blueprint <span>↗</span></button></footer>
+    <ProjectEvidenceCapture kind="blueprint" :default-title="evidenceTitle" :default-note="evidenceNote" :disabled="nodes.length === 0" description="Link this path to the project it serves. The map’s real steps become a visible piece of evidence, with a private visual snapshot on this device." @recorded="storeProjectBlueprint" />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+
+import type { ProjectArtifact } from "../../lib/api";
+import { saveLocalArtifactPreview } from "../../lib/artifactVault";
+import ProjectEvidenceCapture from "./ProjectEvidenceCapture.vue";
 
 type NodeKind = "learn" | "make" | "test" | "share";
 type BlueprintNode = { id: string; label: string; kind: NodeKind; x: number; y: number };
@@ -51,6 +56,11 @@ let draggingId: string | null = null;
 
 const selectedNode = computed(() => nodes.value.find((node) => node.id === selectedId.value) ?? null);
 const connectionPairs = computed(() => nodes.value.slice(1).map((node, index) => ({ from: nodes.value[index]!, to: node })));
+const evidenceTitle = computed(() => `${mapName.value.trim() || "Untitled path"} blueprint`);
+const evidenceNote = computed(() => {
+  const steps = nodes.value.slice(0, 6).map((node) => `${node.kind}: ${node.label}`).join(" · ");
+  return `${nodes.value.length} mapped ${nodes.value.length === 1 ? "step" : "steps"}${steps ? ` — ${steps}` : ""}`.slice(0, 500);
+});
 
 function readBlueprint(): BlueprintNode[] {
   try {
@@ -99,6 +109,38 @@ function removeSelected(): void { if (!selectedId.value) return; nodes.value = n
 function clearMap(): void { nodes.value = []; selectedId.value = null; persist("MAP CLEARED"); }
 function persist(message: string): void { try { localStorage.setItem(storageKey, JSON.stringify({ name: mapName.value, nodes: nodes.value })); saveMessage.value = message; } catch { saveMessage.value = "LOCAL STORAGE IS FULL"; } }
 function nodeGlyph(kind: NodeKind): string { return { learn: "◌", make: "✦", test: "△", share: "↗" }[kind]; }
+
+function storeProjectBlueprint(artifact: ProjectArtifact): void {
+  if (saveLocalArtifactPreview(artifact.id, createBlueprintPreview())) {
+    saveMessage.value = "BLUEPRINT LINKED TO PROJECT";
+    return;
+  }
+  saveMessage.value = "EVIDENCE LINKED / PREVIEW STAYS IN BLUEPRINT";
+}
+
+function createBlueprintPreview(): string {
+  const width = 1080;
+  const height = 640;
+  const toX = (node: BlueprintNode) => Math.round((node.x / 100) * width);
+  const toY = (node: BlueprintNode) => Math.round((node.y / 100) * height);
+  const colorFor = (kind: NodeKind) => ({ learn: "#62e6ff", make: "#ff72bd", test: "#d9ff71", share: "#9c7cff" })[kind];
+  const connections = nodes.value.slice(1).map((node, index) => {
+    const previous = nodes.value[index]!;
+    return `<path d="M${toX(previous)} ${toY(previous)} L${toX(node)} ${toY(node)}" stroke="#9db6e8" stroke-opacity=".55" stroke-width="2" stroke-dasharray="6 8" />`;
+  }).join("");
+  const cards = nodes.value.map((node) => {
+    const x = toX(node);
+    const y = toY(node);
+    const color = colorFor(node.kind);
+    return `<g transform="translate(${x} ${y})"><rect x="-112" y="-35" width="224" height="70" rx="14" fill="#101936" stroke="${color}" stroke-opacity=".78"/><circle cx="-88" cy="-9" r="7" fill="${color}"/><text x="-72" y="-6" fill="${color}" font-family="monospace" font-size="10" letter-spacing="1.5">${escapeXml(node.kind.toUpperCase())}</text><text x="-88" y="16" fill="#edf3ff" font-family="sans-serif" font-size="14">${escapeXml(node.label).slice(0, 30)}</text></g>`;
+  }).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}"><defs><radialGradient id="glow"><stop stop-color="#455cff" stop-opacity=".38"/><stop offset="1" stop-color="#050713" stop-opacity="0"/></radialGradient><pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" fill="none" stroke="#9db6e8" stroke-opacity=".12"/></pattern></defs><rect width="100%" height="100%" fill="#060914"/><rect width="100%" height="100%" fill="url(#grid)"/><ellipse cx="540" cy="320" rx="440" ry="260" fill="url(#glow)"/><text x="52" y="60" fill="#d9ff71" font-family="monospace" font-size="14" letter-spacing="3">TOP / BLUEPRINT</text><text x="52" y="92" fill="#edf3ff" font-family="sans-serif" font-size="28">${escapeXml(mapName.value.trim() || "Untitled path")}</text>${connections}${cards}</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/[<>&"']/g, (character) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "\"": "&quot;", "'": "&apos;" })[character] ?? character);
+}
 </script>
 
 <style scoped>

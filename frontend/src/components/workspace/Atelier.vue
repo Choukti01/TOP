@@ -33,6 +33,13 @@
       </div>
     </div>
 
+    <ProjectEvidenceCapture
+      kind="atelier"
+      :default-title="`${activeMeta.label} session`"
+      :default-note="`Made in TOP Atelier: ${activeMeta.description}`"
+      description="Choose the project this making session strengthens, name what emerged, and keep a useful trace in its evidence trail."
+    />
+
     <WorldComposer v-if="activeTool === 'world'" />
     <BoardBuilder v-else-if="activeTool === 'forge'" mode="forge" />
     <WritingRoom v-else-if="activeTool === 'writing'" />
@@ -49,6 +56,7 @@ import { computed, ref } from "vue";
 
 import BoardBuilder from "./BoardBuilder.vue";
 import MemoryGarden from "./MemoryGarden.vue";
+import ProjectEvidenceCapture from "./ProjectEvidenceCapture.vue";
 import SoundLab from "./SoundLab.vue";
 import WorldComposer from "./WorldComposer.vue";
 import WritingRoom from "./WritingRoom.vue";

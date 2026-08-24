@@ -16,7 +16,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import ThreeField from "../ThreeField.vue";
 import WorkspaceArrival from "./WorkspaceArrival.vue";
 import WorkspaceSidebar from "./WorkspaceSidebar.vue";
@@ -25,8 +26,10 @@ import WorkspaceSectionPanel from "./WorkspaceSectionPanel.vue";
 import SeedComposer from "./SeedComposer.vue";
 import WorkspaceToast from "./WorkspaceToast.vue";
 import { WorkspaceState } from "./WorkspaceState";
+import { workspaceEngine } from "./WorkspaceEngine";
 
 const isArriving = ref(true);
+const route = useRoute();
 
 const fieldMode = computed(() =>
   WorkspaceState.activeSection === "Overview"
@@ -46,6 +49,10 @@ function closeTransientUi(event: KeyboardEvent): void {
 
 onMounted(() => window.addEventListener("keydown", closeTransientUi));
 onUnmounted(() => window.removeEventListener("keydown", closeTransientUi));
+
+watch(() => route.query.project, (projectId) => {
+  if (typeof projectId === "string" && projectId.length > 0) workspaceEngine.openProject(projectId);
+}, { immediate: true });
 </script>
 
 <style scoped>

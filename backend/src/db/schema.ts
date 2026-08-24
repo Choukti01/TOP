@@ -24,6 +24,26 @@ export const projectStatus = pgEnum("project_status", [
   "archived"
 ]);
 
+export const projectDirection = pgEnum("project_direction", [
+  "personal",
+  "creative",
+  "learning",
+  "community",
+  "venture",
+  "other"
+]);
+
+export const milestoneStatus = pgEnum("milestone_status", ["planned", "completed"]);
+
+export const projectArtifactKind = pgEnum("project_artifact_kind", [
+  "atelier",
+  "canvas",
+  "blueprint",
+  "note",
+  "link",
+  "other"
+]);
+
 export const contributionType = pgEnum("contribution_type", [
   "idea",
   "research",
@@ -38,8 +58,18 @@ export const contributionType = pgEnum("contribution_type", [
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const authSessions = pgTable("auth_sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
 
 export const profiles = pgTable("profiles", {
@@ -100,10 +130,50 @@ export const projects = pgTable("projects", {
     .references(() => users.id, { onDelete: "restrict" }),
   title: text("title").notNull(),
   purpose: text("purpose").notNull(),
+  direction: projectDirection("direction").notNull(),
+  nextAction: text("next_action").notNull(),
   status: projectStatus("status").default("planning").notNull(),
   progress: integer("progress").default(0).notNull(),
+  color: text("color").default("#dfae63").notNull(),
+  fieldX: integer("field_x").default(0).notNull(),
+  fieldY: integer("field_y").default(0).notNull(),
+  fieldWidth: integer("field_width").default(270).notNull(),
+  fieldHeight: integer("field_height").default(168).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const projectMilestones = pgTable("project_milestones", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  status: milestoneStatus("status").default("planned").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true })
+});
+
+export const projectArtifacts = pgTable("project_artifacts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  kind: projectArtifactKind("kind").notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const projectActivity = pgTable("project_activity", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  detail: text("detail"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
 
 export const projectMembers = pgTable(

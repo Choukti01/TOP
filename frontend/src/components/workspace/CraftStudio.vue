@@ -21,12 +21,17 @@
       </div>
     </div>
 
-    <footer class="studio-footer"><p>Your canvas stays on this device until accounts and secure cloud storage are added.</p><div><button type="button" @click="saveCanvas">Keep in my field</button><button class="export" type="button" @click="exportCanvas">Export PNG ↗</button></div></footer>
+    <footer class="studio-footer"><p>Your canvas preview stays on this device; linking it records the work in your chosen project’s permanent evidence trail.</p><div><button type="button" @click="saveCanvas">Keep in my field</button><button class="export" type="button" @click="exportCanvas">Export PNG ↗</button></div></footer>
+    <ProjectEvidenceCapture kind="canvas" default-title="Studio canvas" default-note="A visual sketch made in TOP Studio." :disabled="!hasMarks" description="Link this exact canvas to a project. Its project evidence stays permanent; the visual snapshot is kept privately on this device." @recorded="storeProjectCanvas" />
   </section>
 </template>
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
+
+import type { ProjectArtifact } from "../../lib/api";
+import { saveLocalArtifactPreview } from "../../lib/artifactVault";
+import ProjectEvidenceCapture from "./ProjectEvidenceCapture.vue";
 
 const canvas = ref<HTMLCanvasElement>();
 const brushColor = ref("#62e6ff");
@@ -153,6 +158,31 @@ function exportCanvas(): void {
   link.download = "top-studio.png";
   link.click();
   saveMessage.value = "PNG EXPORTED";
+}
+
+function createCanvasPreview(): string | null {
+  if (!canvas.value) return null;
+  const source = canvas.value;
+  const longestSide = Math.max(source.width, source.height);
+  const scale = Math.min(1, 1200 / Math.max(longestSide, 1));
+  const preview = document.createElement("canvas");
+  preview.width = Math.max(1, Math.round(source.width * scale));
+  preview.height = Math.max(1, Math.round(source.height * scale));
+  const previewContext = preview.getContext("2d");
+  if (!previewContext) return null;
+  previewContext.fillStyle = "#060711";
+  previewContext.fillRect(0, 0, preview.width, preview.height);
+  previewContext.drawImage(source, 0, 0, preview.width, preview.height);
+  return preview.toDataURL("image/jpeg", .84);
+}
+
+function storeProjectCanvas(artifact: ProjectArtifact): void {
+  const preview = createCanvasPreview();
+  if (preview && saveLocalArtifactPreview(artifact.id, preview)) {
+    saveMessage.value = "CANVAS LINKED TO PROJECT";
+    return;
+  }
+  saveMessage.value = "EVIDENCE LINKED / PREVIEW STAYS IN STUDIO";
 }
 
 onMounted(() => {

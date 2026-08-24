@@ -8,6 +8,27 @@
       "when": 1786128969640,
       "tag": "0000_bumpy_iron_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787536296993,
+      "tag": "0001_opposite_mindworm",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787537486833,
+      "tag": "0002_faithful_klaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787541530539,
+      "tag": "0003_silent_ben_parker",
+      "breakpoints": true
     }
   ]
 }

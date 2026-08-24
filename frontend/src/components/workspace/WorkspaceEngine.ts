@@ -1,9 +1,16 @@
 import {
+  createProjectArtifact,
+  createProjectMilestone,
   createWorkspaceProject,
+  getWorkspaceProject,
   getWorkspaceDashboard,
   getWorkspaceOverview,
+  updateProjectMilestone,
   updateWorkspaceProject,
+  updateWorkspaceProjectPosition,
+  type ProjectArtifactKind,
   type ProjectDirection,
+  type WorkspaceProjectDetail,
   type WorkspaceProject
 } from "../../lib/api";
 import { WorkspaceState } from "./WorkspaceState";
@@ -34,6 +41,7 @@ class WorkspaceEngine {
     this.clearSelection();
     this.triggerMotion("action");
     this.scrollToSurface();
+    void this.loadProjectRoom(id);
   }
 
   public openSection(section: WorkspaceSection, returnTo?: WorkspaceSection): void {
@@ -75,6 +83,7 @@ class WorkspaceEngine {
     this.suppressNextProjectOpen = result.didMove;
     if (result.didMove) {
       window.setTimeout(() => { this.suppressNextProjectOpen = false; }, 0);
+      if (result.node?.kind === "project") void this.persistProjectPosition(result.node);
     }
     this.save();
   }
@@ -101,6 +110,7 @@ class WorkspaceEngine {
     WorkspaceState.projectDraft = null;
     WorkspaceState.activeProjectId = project.id;
     WorkspaceState.activeSection = "Project";
+    void this.loadProjectRoom(project.id);
     this.save();
     this.notify("Your project has a place in the field.");
     this.triggerMotion("action");
@@ -108,15 +118,35 @@ class WorkspaceEngine {
 
   public async saveProjectNextAction(projectId: string, nextAction: string): Promise<void> {
     const { project } = await updateWorkspaceProject(projectId, { nextAction });
-    const projectIndex = WorkspaceState.dashboard?.projects.findIndex((item) => item.id === projectId) ?? -1;
-
-    if (WorkspaceState.dashboard && projectIndex >= 0) WorkspaceState.dashboard.projects[projectIndex] = project;
-
-    const nodeIndex = WorkspaceState.nodes.nodes.findIndex((item) => item.id === projectId);
-    if (nodeIndex >= 0) WorkspaceState.nodes.nodes[nodeIndex] = this.toNode(project);
-
-    this.save();
+    this.applyProject(project);
     this.notify("Next move saved. Keep the work small enough to begin.");
+    await this.loadProjectRoom(projectId, false);
+  }
+
+  public async setProjectStatus(projectId: string, status: WorkspaceProject["status"]): Promise<void> {
+    const { project } = await updateWorkspaceProject(projectId, { status });
+    this.applyProject(project);
+    this.notify({ planning: "Project returned to a beginning.", active: "Project is back in practice.", paused: "Project paused. Its place in your field is kept.", completed: "Project marked complete. Its trail stays with you." }[status]);
+    await this.loadProjectRoom(projectId, false);
+  }
+
+  public async addProjectMilestone(projectId: string, title: string): Promise<void> {
+    await createProjectMilestone(projectId, { title });
+    await this.loadProjectRoom(projectId, false);
+    this.notify("Milestone added. Give it a real moment in your life.");
+  }
+
+  public async setProjectMilestone(projectId: string, milestoneId: string, completed: boolean): Promise<void> {
+    await updateProjectMilestone(projectId, milestoneId, { status: completed ? "completed" : "planned" });
+    await this.loadProjectRoom(projectId, false);
+    this.notify(completed ? "Milestone marked complete. The work has evidence now." : "Milestone reopened. Keep moving with honesty.");
+  }
+
+  public async recordProjectArtifact(projectId: string, input: { title: string; kind: ProjectArtifactKind; note?: string }) {
+    const { artifact } = await createProjectArtifact(projectId, input);
+    await this.loadProjectRoom(projectId, false);
+    this.notify("Evidence recorded in your project trail.");
+    return artifact;
   }
 
   public save(): boolean {
@@ -156,6 +186,8 @@ class WorkspaceEngine {
       WorkspaceState.syncStatus = "synced";
       WorkspaceState.dashboard = dashboard;
       WorkspaceState.dashboardStatus = "ready";
+      WorkspaceState.projectDetails = {};
+      WorkspaceState.projectRoomStatus = "idle";
       WorkspaceState.nodes.nodes = overview.nodes.map((node) => ({ ...node, selected: false }));
 
       if (WorkspaceState.activeProjectId && !dashboard.projects.some((project) => project.id === WorkspaceState.activeProjectId)) {
@@ -167,7 +199,48 @@ class WorkspaceEngine {
     } catch {
       WorkspaceState.syncStatus = "offline";
       WorkspaceState.dashboardStatus = "offline";
+      WorkspaceState.projectRoomStatus = "error";
       WorkspaceState.nodes.nodes = savedNodes;
+    }
+  }
+
+  private async loadProjectRoom(projectId: string, announceError = true): Promise<void> {
+    WorkspaceState.projectRoomStatus = "loading";
+    try {
+      const detail = await getWorkspaceProject(projectId);
+      this.applyProjectDetail(detail);
+      WorkspaceState.projectRoomStatus = "ready";
+    } catch (error) {
+      WorkspaceState.projectRoomStatus = "error";
+      if (announceError) this.notify(error instanceof Error ? error.message : "TOP could not open this project record.");
+    }
+  }
+
+  private applyProjectDetail(detail: WorkspaceProjectDetail): void {
+    const { project } = detail;
+    WorkspaceState.projectDetails[project.id] = detail;
+
+    this.applyProject(project, false);
+  }
+
+  private applyProject(project: WorkspaceProject, save = true): void {
+    const projectIndex = WorkspaceState.dashboard?.projects.findIndex((item) => item.id === project.id) ?? -1;
+    if (WorkspaceState.dashboard && projectIndex >= 0) WorkspaceState.dashboard.projects[projectIndex] = project;
+
+    const nodeIndex = WorkspaceState.nodes.nodes.findIndex((item) => item.id === project.id);
+    if (nodeIndex >= 0) WorkspaceState.nodes.nodes[nodeIndex] = this.toNode(project);
+    const detail = WorkspaceState.projectDetails[project.id];
+    if (detail) WorkspaceState.projectDetails[project.id] = { ...detail, project };
+    if (save) this.save();
+  }
+
+  private async persistProjectPosition(node: WorkspaceNode): Promise<void> {
+    try {
+      const { project } = await updateWorkspaceProjectPosition(node.id, { x: Math.round(node.x), y: Math.round(node.y) });
+      this.applyProject(project);
+      this.notify("Project position saved to your field.");
+    } catch {
+      this.notify("This position is held on this device until TOP reconnects.");
     }
   }
 

@@ -1,7 +1,7 @@
 import { reactive } from "vue";
 
 import { NodeManager } from "./nodes/NodeManager";
-import type { ProjectDirection, WorkspaceDashboard } from "../../lib/api";
+import type { ProjectDirection, WorkspaceDashboard, WorkspaceProjectDetail } from "../../lib/api";
 
 export type WorkspaceSection =
     | "Overview"
@@ -40,6 +40,10 @@ export const WorkspaceState=reactive({
     dashboard:null as WorkspaceDashboard | null,
 
     dashboardStatus:"loading" as "loading" | "ready" | "offline",
+
+    projectDetails:{} as Record<string, WorkspaceProjectDetail>,
+
+    projectRoomStatus:"idle" as "idle" | "loading" | "ready" | "error",
 
     projectComposerOpen:false,
 

@@ -56,17 +56,19 @@ export class NodeDragging {
 
     }
 
-    public end(): { didMove: boolean; wasActive: boolean } {
+    public end(): { didMove: boolean; wasActive: boolean; node: WorkspaceNode | null } {
 
         const didMove = this.moved;
 
-        const wasActive = this.active !== null;
+        const node = this.active;
+
+        const wasActive = node !== null;
 
         this.active = null;
 
         this.moved = false;
 
-        return { didMove, wasActive };
+        return { didMove, wasActive, node };
 
     }
 

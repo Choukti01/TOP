@@ -6,6 +6,8 @@ export interface AppConfig {
   port: number;
   webOrigin: string;
   databaseUrl?: string;
+  databaseEnabled?: boolean;
+  sessionSecret?: string;
 }
 
 function parsePort(value: string | undefined): number {
@@ -36,6 +38,8 @@ export function loadConfig(env = process.env): AppConfig {
     host: env.HOST ?? "127.0.0.1",
     port: parsePort(env.PORT),
     webOrigin: env.WEB_ORIGIN ?? "http://localhost:5173",
-    databaseUrl: env.DATABASE_URL
+    databaseUrl: env.DATABASE_URL,
+    databaseEnabled: env.DATABASE_ENABLED === "true",
+    sessionSecret: env.SESSION_SECRET
   };
 }

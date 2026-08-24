@@ -4,6 +4,11 @@
       <img class="brand-logo" :src="topLogoUrl" alt="TOP" />
     </button>
 
+    <button class="member-mark" type="button" aria-label="Open your TOP profile" @click="openProfile">
+      <span class="member-avatar"><img v-if="profileVisualState.avatarDataUrl" :src="profileVisualState.avatarDataUrl" alt="" /><b v-else>{{ profileInitials }}</b></span>
+      <span><small>YOUR FIELD</small><strong>{{ authState.user?.displayName || 'My profile' }}</strong></span>
+    </button>
+
     <button
       class="atlas-trigger"
       type="button"
@@ -52,7 +57,9 @@
           <footer>
             <span class="connection" :class="WorkspaceState.syncStatus"></span>
             <span>{{ syncCopy }}</span>
+            <button type="button" @click="openProfile">{{ authState.user?.displayName || 'My profile' }}</button>
             <button v-if="WorkspaceState.activeSection !== 'Overview'" type="button" @click="returnToUniverse">Back to universe</button>
+            <button type="button" @click="signOut">Sign out</button>
           </footer>
         </section>
       </div>
@@ -62,12 +69,16 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { useRouter } from "vue-router";
 
+import { authState, leaveTop, profileVisualState } from "../../lib/auth";
 import { topLogoUrl } from "../../lib/brand";
 import { WorkspaceState, type WorkspaceSection } from "./WorkspaceState";
 import { workspaceEngine } from "./WorkspaceEngine";
 
 const isAtlasOpen = ref(false);
+const router = useRouter();
+const profileInitials = computed(() => (authState.user?.displayName ?? "TOP").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase());
 
 const navigation: Array<{ name: WorkspaceSection; icon: string; kicker: string }> = [
   { name: "Overview", icon: "◉", kicker: "YOUR FIELD" },
@@ -96,6 +107,17 @@ function returnToUniverse(): void {
   isAtlasOpen.value = false;
 }
 
+function openProfile(): void {
+  isAtlasOpen.value = false;
+  void router.push("/profile");
+}
+
+async function signOut(): Promise<void> {
+  isAtlasOpen.value = false;
+  await leaveTop();
+  await router.push("/");
+}
+
 function closeOnEscape(event: KeyboardEvent): void {
   if (event.key === "Escape") isAtlasOpen.value = false;
 }
@@ -121,4 +143,6 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
 .brand { color:var(--top-ink); }.brand-seal { border-color:rgba(98,230,255,.75); box-shadow:inset 0 0 0 4px rgba(98,230,255,.06),0 0 28px rgba(98,230,255,.15); }.brand-seal::before,.brand-seal::after { background:rgba(156,124,255,.75); }.brand-seal i { border-color:rgba(98,230,255,.8); }.brand-seal i:nth-child(2) { border-color:rgba(217,255,113,.75); }.brand-seal b { background:var(--top-lime); box-shadow:0 0 11px var(--top-lime); }.brand-word { font-family:var(--top-display); font-weight:800; letter-spacing:.1em; }.brand-rule { background:linear-gradient(90deg,var(--top-cyan),var(--top-violet),transparent); }.brand small { color:rgba(193,207,248,.54); font-family:var(--top-mono); }.atlas-trigger { background:rgba(9,13,31,.78); border-color:rgba(107,143,255,.32); }.atlas-trigger:hover { background:rgba(23,32,74,.88); border-color:var(--top-cyan); }.trigger-symbol { border-color:rgba(98,230,255,.62); }.trigger-symbol i { background:var(--top-cyan); box-shadow:0 0 9px var(--top-cyan); }.atlas-trigger small { color:rgba(193,207,248,.52); font-family:var(--top-mono); }.atlas-trigger b { color:var(--top-cyan); }.reflection-orbit { background:rgba(12,17,40,.78); border-color:rgba(156,124,255,.42); }.reflection-orbit > span { border-color:rgba(98,230,255,.58); }.reflection-orbit > span::before { border-color:rgba(156,124,255,.43); }.reflection-orbit i { background:var(--top-lime); box-shadow:0 0 9px var(--top-lime); }.atlas-backdrop { background:rgba(3,5,15,.7); }.atlas { background:radial-gradient(circle at 86% 13%,rgba(99,94,255,.23),transparent 25%),radial-gradient(circle at 16% 84%,rgba(49,219,255,.14),transparent 25%),rgba(8,11,28,.98); border-color:rgba(126,157,255,.34); }.atlas::before { border-color:rgba(98,230,255,.14); }.atlas header span,.atlas-icon,.atlas nav button i,.atlas footer button { color:var(--top-cyan); font-family:var(--top-mono); }.atlas h2 { font-family:var(--top-display); font-weight:700; letter-spacing:-.075em; }.atlas-intro { color:var(--top-muted); }.atlas nav button { background:rgba(131,154,255,.05); border-color:rgba(130,160,255,.16); }.atlas nav button:hover,.atlas nav button.active { background:linear-gradient(100deg,rgba(98,230,255,.14),rgba(156,124,255,.18)); border-color:rgba(98,230,255,.62); }.atlas-icon { border-color:rgba(98,230,255,.42); }.atlas nav button small { color:rgba(193,207,248,.48); font-family:var(--top-mono); }.atlas footer { border-color:rgba(130,160,255,.14); color:var(--top-muted); }.connection.loading { background:var(--top-cyan); }.connection.synced { background:var(--top-lime); box-shadow:0 0 12px var(--top-lime); }.connection.offline { background:var(--top-pink); }
 .brand-mark { display:block; filter:drop-shadow(0 0 8px rgba(98,230,255,.34)); height:34px; object-fit:contain; width:52px; }
 .brand-logo { display:block; filter:drop-shadow(0 0 11px rgba(98,230,255,.32)); height:68px; object-fit:contain; width:68px; }
+.atlas footer button + button { margin-left:0; }
+.member-mark { align-items:center; background:rgba(8,12,30,.62); border:1px solid rgba(110,145,255,.22); border-radius:999px; color:var(--top-ink); cursor:pointer; display:flex; gap:8px; left:25px; padding:5px 12px 5px 5px; pointer-events:auto; position:absolute; top:105px; transition:.2s ease; }.member-mark:hover { border-color:var(--top-cyan); transform:translateX(3px); }.member-avatar { align-items:center; background:linear-gradient(145deg,var(--top-cyan),var(--top-violet)); border-radius:50%; display:flex; height:29px; justify-content:center; overflow:hidden; width:29px; }.member-avatar img { height:100%; object-fit:cover; width:100%; }.member-avatar b { color:#07101d; font-family:var(--top-display); font-size:13px; letter-spacing:-.07em; }.member-mark small,.member-mark strong { display:block; text-align:left; }.member-mark small { color:var(--top-muted); font-family:var(--top-mono); font-size:6px; letter-spacing:.13em; }.member-mark strong { font-family:var(--top-body); font-size:11px; font-weight:700; margin-top:1px; max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } @media (max-width:700px) { .member-mark { left:15px; top:82px; }.member-mark > span:last-child { display:none; }.member-mark { padding:5px; } }
 </style>

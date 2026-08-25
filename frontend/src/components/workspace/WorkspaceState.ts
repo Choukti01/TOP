@@ -11,6 +11,7 @@ export type WorkspaceSection =
     | "Atelier"
     | "Studio"
     | "Blueprint"
+    | "Signals"
     | "AI"
     | "Reflection";
 

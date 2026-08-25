@@ -3,7 +3,7 @@ export type WorkspaceNodeStatus = "planning" | "active" | "paused" | "completed"
 export type ProjectDirection = "personal" | "creative" | "learning" | "community" | "venture" | "other";
 export type ProjectMilestoneStatus = "planned" | "completed";
 export type ProjectArtifactKind = "atelier" | "canvas" | "blueprint" | "note" | "link" | "other";
-export type ProjectActivityType = "project-started" | "project-state-updated" | "next-action-updated" | "milestone-added" | "milestone-completed" | "milestone-reopened" | "artifact-recorded" | "circle-updated" | "contribution-recorded" | "review-recorded";
+export type ProjectActivityType = "project-started" | "project-state-updated" | "next-action-updated" | "milestone-added" | "milestone-completed" | "milestone-reopened" | "artifact-recorded" | "invitation-sent" | "invitation-accepted" | "member-role-updated" | "member-removed" | "circle-updated" | "circle-message-sent" | "contribution-recorded" | "review-recorded";
 export type ProjectMemberRole = "owner" | "contributor" | "mentor";
 export type ProjectContributionType = "idea" | "research" | "design" | "code" | "funding" | "mentorship" | "operations" | "other";
 
@@ -70,6 +70,7 @@ export interface ProjectReview {
 export interface ProjectCollaborator {
   userId: string;
   displayName: string;
+  avatarDataUrl: string | null;
   role: ProjectMemberRole;
   joinedAt: string;
 }
@@ -85,9 +86,45 @@ export interface ProjectContribution {
   createdAt: string;
 }
 
+export interface ProjectMessage {
+  id: string;
+  projectId: string;
+  authorId: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface ProjectAccess {
   role: ProjectMemberRole;
   canManage: boolean;
+}
+
+export interface ProjectPendingInvitation {
+  id: string;
+  inviteeId: string;
+  displayName: string;
+  role: Exclude<ProjectMemberRole, "owner">;
+  createdAt: string;
+}
+
+export interface CollaborationInvitation {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  inviterName: string;
+  role: Exclude<ProjectMemberRole, "owner">;
+  createdAt: string;
+}
+
+export interface TopNotification {
+  id: string;
+  type: string;
+  title: string;
+  detail: string | null;
+  href: string | null;
+  readAt: string | null;
+  createdAt: string;
 }
 
 export interface WorkspaceProjectDetail {
@@ -97,7 +134,9 @@ export interface WorkspaceProjectDetail {
   reviews: ProjectReview[];
   collaborators: ProjectCollaborator[];
   contributions: ProjectContribution[];
+  messages: ProjectMessage[];
   access: ProjectAccess;
+  pendingInvitations: ProjectPendingInvitation[];
   activity: ProjectActivity[];
 }
 
@@ -263,12 +302,14 @@ export function getProjectDetail(userId: string, projectId: string): WorkspacePr
       .filter((review) => review.projectId === projectId)
       .map((review) => ({ ...review }))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
-    collaborators: [{ userId, displayName: "You", role: "owner", joinedAt: project.createdAt }],
+    collaborators: [{ userId, displayName: "You", avatarDataUrl: null, role: "owner", joinedAt: project.createdAt }],
     contributions: workspace.contributions
       .filter((contribution) => contribution.projectId === projectId)
       .map((contribution) => ({ ...contribution }))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    messages: [],
     access: { role: "owner", canManage: true },
+    pendingInvitations: [],
     activity: workspace.activities
       .filter((activity) => activity.projectId === projectId)
       .map((activity) => ({ ...activity }))

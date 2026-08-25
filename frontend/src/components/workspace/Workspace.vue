@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import ThreeField from "../ThreeField.vue";
 import WorkspaceArrival from "./WorkspaceArrival.vue";
@@ -50,8 +50,16 @@ function closeTransientUi(event: KeyboardEvent): void {
 onMounted(() => window.addEventListener("keydown", closeTransientUi));
 onUnmounted(() => window.removeEventListener("keydown", closeTransientUi));
 
-watch(() => route.query.project, (projectId) => {
-  if (typeof projectId === "string" && projectId.length > 0) workspaceEngine.openProject(projectId);
+watch(() => [route.query.project, route.query.focus] as const, async ([projectId, focus]) => {
+  if (typeof projectId !== "string" || projectId.length === 0) return;
+  await workspaceEngine.openProject(projectId);
+  if (focus !== "conversation") return;
+  await nextTick();
+  window.requestAnimationFrame(() => document.getElementById("project-conversation")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+}, { immediate: true });
+
+watch(() => route.query.invite, (invitationId) => {
+  if (typeof invitationId === "string" && invitationId.length > 0) workspaceEngine.openSection("Signals");
 }, { immediate: true });
 </script>
 

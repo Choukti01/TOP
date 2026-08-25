@@ -54,7 +54,7 @@ onMounted(() => {
     if (progress.value >= 100 && timer !== undefined) {
       window.clearInterval(timer);
       timer = undefined;
-      finishTimer = window.setTimeout(() => router.push("/workspace"), 520);
+      finishTimer = window.setTimeout(() => router.push("/top"), 520);
     }
   }, 620);
 });

@@ -15,6 +15,8 @@ export interface AuthenticatedUser {
   displayName: string;
   biography: string | null;
   location: string | null;
+  fieldName: string | null;
+  avatarDataUrl: string | null;
   createdAt: string;
 }
 
@@ -65,6 +67,8 @@ export class AuthService {
       displayName: input.displayName.trim(),
       biography: null,
       location: null,
+      fieldName: null,
+      avatarDataUrl: null,
       createdAt: now,
       passwordHash: await hashPassword(input.password)
     };
@@ -117,13 +121,15 @@ export class AuthService {
     return this.serializeCookie("", 0);
   }
 
-  public async updateProfile(userId: string, input: { displayName?: string; biography?: string | null; location?: string | null }): Promise<AuthenticatedUser | null> {
+  public async updateProfile(userId: string, input: { displayName?: string; biography?: string | null; location?: string | null; fieldName?: string | null; avatarDataUrl?: string | null }): Promise<AuthenticatedUser | null> {
     if (this.database) return this.updateDatabaseProfile(userId, input);
     const user = this.usersById.get(userId);
     if (!user) return null;
     if (input.displayName !== undefined) user.displayName = input.displayName.trim();
     if (input.biography !== undefined) user.biography = input.biography;
     if (input.location !== undefined) user.location = input.location;
+    if (input.fieldName !== undefined) user.fieldName = input.fieldName;
+    if (input.avatarDataUrl !== undefined) user.avatarDataUrl = input.avatarDataUrl;
     return toPublicUser(user);
   }
 
@@ -182,13 +188,13 @@ export class AuthService {
       if (isUniqueViolation(error)) throw new AuthError("duplicate-email");
       throw error;
     }
-    const user: AuthenticatedUser = { id, email: input.email, displayName: input.displayName.trim(), biography: null, location: null, createdAt: now.toISOString() };
+    const user: AuthenticatedUser = { id, email: input.email, displayName: input.displayName.trim(), biography: null, location: null, fieldName: null, avatarDataUrl: null, createdAt: now.toISOString() };
     return { user, cookie: await this.createSession(id) };
   }
 
   private async loginWithDatabase(input: { email: string; password: string; fingerprint: string }): Promise<{ user: AuthenticatedUser; cookie: string }> {
     if (!this.database) throw new Error("Database is unavailable.");
-    const [record] = await this.database.select({ id: users.id, email: users.email, passwordHash: users.passwordHash, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location }).from(users).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(users.email, input.email));
+    const [record] = await this.database.select({ id: users.id, email: users.email, passwordHash: users.passwordHash, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location, fieldName: profiles.fieldName, avatarDataUrl: profiles.avatarDataUrl }).from(users).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(users.email, input.email));
     if (!record || !(await verifyPassword(input.password, record.passwordHash))) {
       this.recordFailedLogin(input.fingerprint);
       throw new AuthError("invalid-credentials");
@@ -204,19 +210,19 @@ export class AuthService {
       await this.database.delete(authSessions).where(eq(authSessions.id, sessionId));
       return null;
     }
-    const [record] = await this.database.select({ sessionExpiresAt: authSessions.expiresAt, id: users.id, email: users.email, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(authSessions.id, sessionId));
+    const [record] = await this.database.select({ sessionExpiresAt: authSessions.expiresAt, id: users.id, email: users.email, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location, fieldName: profiles.fieldName, avatarDataUrl: profiles.avatarDataUrl }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(authSessions.id, sessionId));
     if (!record || record.sessionExpiresAt.getTime() !== expiresAt || record.sessionExpiresAt.getTime() <= Date.now()) return null;
     return toDatabaseUser(record);
   }
 
-  private async updateDatabaseProfile(userId: string, input: { displayName?: string; biography?: string | null; location?: string | null }): Promise<AuthenticatedUser | null> {
+  private async updateDatabaseProfile(userId: string, input: { displayName?: string; biography?: string | null; location?: string | null; fieldName?: string | null; avatarDataUrl?: string | null }): Promise<AuthenticatedUser | null> {
     if (!this.database) return null;
-    const changes = { updatedAt: new Date(), ...(input.displayName !== undefined ? { displayName: input.displayName.trim() } : {}), ...(input.biography !== undefined ? { biography: input.biography } : {}), ...(input.location !== undefined ? { location: input.location } : {}) };
+    const changes = { updatedAt: new Date(), ...(input.displayName !== undefined ? { displayName: input.displayName.trim() } : {}), ...(input.biography !== undefined ? { biography: input.biography } : {}), ...(input.location !== undefined ? { location: input.location } : {}), ...(input.fieldName !== undefined ? { fieldName: input.fieldName } : {}), ...(input.avatarDataUrl !== undefined ? { avatarDataUrl: input.avatarDataUrl } : {}) };
     const [profile] = await this.database.update(profiles).set(changes).where(eq(profiles.userId, userId)).returning();
     if (!profile) return null;
     const [user] = await this.database.select({ id: users.id, email: users.email, createdAt: users.createdAt }).from(users).where(eq(users.id, userId));
     if (!user) return null;
-    return { id: user.id, email: user.email, displayName: profile.displayName, biography: profile.biography, location: profile.location, createdAt: user.createdAt.toISOString() };
+    return { id: user.id, email: user.email, displayName: profile.displayName, biography: profile.biography, location: profile.location, fieldName: profile.fieldName, avatarDataUrl: profile.avatarDataUrl, createdAt: user.createdAt.toISOString() };
   }
 }
 
@@ -252,8 +258,8 @@ function parseCookie(header: string | undefined, name: string): string | null {
   return null;
 }
 
-function toDatabaseUser(record: { id: string; email: string; createdAt: Date; displayName: string | null; biography: string | null; location: string | null }): AuthenticatedUser {
-  return { id: record.id, email: record.email, displayName: record.displayName ?? record.email.split("@")[0]!, biography: record.biography, location: record.location, createdAt: record.createdAt.toISOString() };
+function toDatabaseUser(record: { id: string; email: string; createdAt: Date; displayName: string | null; biography: string | null; location: string | null; fieldName: string | null; avatarDataUrl: string | null }): AuthenticatedUser {
+  return { id: record.id, email: record.email, displayName: record.displayName ?? record.email.split("@")[0]!, biography: record.biography, location: record.location, fieldName: record.fieldName, avatarDataUrl: record.avatarDataUrl, createdAt: record.createdAt.toISOString() };
 }
 
 function isUniqueViolation(error: unknown): boolean {

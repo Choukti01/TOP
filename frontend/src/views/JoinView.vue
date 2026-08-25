@@ -68,12 +68,13 @@ async function submit(): Promise<void> {
   try {
     if (isRegistering.value) {
       await createTopAccount({ email: email.value, displayName: displayName.value, password: password.value });
-      await router.push("/identity");
+      const next = typeof route.query.next === "string" && route.query.next.startsWith("/") ? route.query.next : "/top";
+      await router.push(next);
       return;
     }
 
     await signInToTop({ email: email.value, password: password.value });
-    const next = typeof route.query.next === "string" && route.query.next.startsWith("/") ? route.query.next : "/workspace";
+    const next = typeof route.query.next === "string" && route.query.next.startsWith("/") ? route.query.next : "/top";
     await router.push(next);
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : "TOP could not open your field right now.";

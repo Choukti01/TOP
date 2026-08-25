@@ -6,6 +6,8 @@ import GeneratingView from "../views/GeneratingView.vue";
 import Workspace from "../components/workspace/Workspace.vue";
 import JoinView from "../views/JoinView.vue";
 import ProfileView from "../views/ProfileView.vue";
+import TopPageView from "../views/TopPageView.vue";
+import PublicProfileView from "../views/PublicProfileView.vue";
 import { restoreTopSession } from "../lib/auth";
 
 const router = createRouter({
@@ -35,9 +37,26 @@ const router = createRouter({
         },
 
         {
-            path: "/workspace",
+            path: "/top",
+            component: TopPageView,
+            meta: { requiresAuth: true }
+        },
+
+        {
+            path: "/field",
             component: Workspace,
             meta: { requiresAuth: true }
+        },
+
+        {
+            path: "/workspace",
+            redirect: (to) => {
+                // Preserve old project notification links after the public TOP Page replaced /workspace.
+                if (typeof to.query.project === "string" || typeof to.query.invite === "string") {
+                    return { path: "/field", query: to.query };
+                }
+                return "/top";
+            }
         },
 
         {
@@ -52,13 +71,19 @@ const router = createRouter({
         },
 
         {
+            path: "/people/:personId",
+            component: PublicProfileView,
+            meta: { requiresAuth: true }
+        },
+
+        {
             path: "/explore",
-            redirect: "/workspace"
+            redirect: "/top"
         },
 
         {
             path: "/settings",
-            redirect: "/workspace"
+            redirect: "/profile"
         },
 
         {

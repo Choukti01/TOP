@@ -53,6 +53,18 @@ const collaboratorInput = z.object({
   role: z.enum(["contributor", "mentor"])
 }).strict();
 
+const collaboratorRoleInput = z.object({
+  role: z.enum(["contributor", "mentor"])
+}).strict();
+
+const invitationResponseInput = z.object({
+  response: z.enum(["accepted", "declined"])
+}).strict();
+
+const projectMessageInput = z.object({
+  body: z.string().trim().min(1).max(2_000)
+}).strict();
+
 const contributionInput = z.object({
   type: z.enum(contributionValues),
   description: z.string().trim().min(3).max(1_000),
@@ -100,6 +112,28 @@ workspaceRouter.get("/dashboard", async (_request, response) => {
 
 workspaceRouter.get("/profile-dashboard", async (_request, response) => {
   response.status(200).json(await workspace.getPersonalDashboard(currentUser(response).id));
+});
+
+workspaceRouter.get("/invitations", async (_request, response) => {
+  response.status(200).json({ invitations: await workspace.getInvitations(currentUser(response).id) });
+});
+
+workspaceRouter.post("/invitations/:invitationId/respond", async (request, response) => {
+  const parsed = invitationResponseInput.safeParse(request.body);
+  if (!parsed.success) return response.status(422).json({ error: "Choose whether to accept or decline this invitation." });
+  const project = await workspace.respondToInvitation(currentUser(response).id, request.params.invitationId, parsed.data.response);
+  if (!project) return response.status(404).json({ error: "That invitation is no longer available." });
+  return response.status(200).json({ project, message: parsed.data.response === "accepted" ? "You are now part of this project circle." : "Invitation declined. Your field remains yours." });
+});
+
+workspaceRouter.get("/notifications", async (_request, response) => {
+  response.status(200).json({ notifications: await workspace.getNotifications(currentUser(response).id) });
+});
+
+workspaceRouter.patch("/notifications/:notificationId/read", async (request, response) => {
+  const marked = await workspace.markNotificationRead(currentUser(response).id, request.params.notificationId);
+  if (!marked) return response.status(404).json({ error: "That notification is no longer available." });
+  return response.status(204).end();
 });
 
 workspaceRouter.get("/seeds", async (_request, response) => {
@@ -250,10 +284,32 @@ workspaceRouter.post("/projects/:projectId/collaborators", async (request, respo
     return response.status(422).json({ error: "Enter the email of a registered TOP member and choose their role." });
   }
 
-  const collaborator = await workspace.addCollaborator(currentUser(response).id, request.params.projectId, parsed.data);
-  if (!collaborator) return response.status(404).json({ error: "That person is not a registered TOP member, or this project is not yours to invite into." });
+  const invitation = await workspace.createInvitation(currentUser(response).id, request.params.projectId, parsed.data);
+  if (!invitation) return response.status(404).json({ error: "That person cannot be invited. They may not be registered, may already belong to this project, or you do not manage it." });
 
-  return response.status(201).json({ collaborator, message: `${collaborator.displayName} now has a place in this project circle.` });
+  return response.status(201).json({ invitation, message: `${invitation.displayName} received a private invitation to this project circle.` });
+});
+
+workspaceRouter.patch("/projects/:projectId/collaborators/:memberId", async (request, response) => {
+  const parsed = collaboratorRoleInput.safeParse(request.body);
+  if (!parsed.success) return response.status(422).json({ error: "Choose a contributor or mentor role." });
+  const collaborator = await workspace.updateCollaboratorRole(currentUser(response).id, request.params.projectId, request.params.memberId, parsed.data.role);
+  if (!collaborator) return response.status(404).json({ error: "That member cannot be changed, or this project is not yours to manage." });
+  return response.status(200).json({ collaborator, message: `${collaborator.displayName}'s role is now ${collaborator.role}.` });
+});
+
+workspaceRouter.delete("/projects/:projectId/collaborators/:memberId", async (request, response) => {
+  const removed = await workspace.removeCollaborator(currentUser(response).id, request.params.projectId, request.params.memberId);
+  if (!removed) return response.status(404).json({ error: "That member cannot be removed, or this project is not yours to manage." });
+  return response.status(204).end();
+});
+
+workspaceRouter.post("/projects/:projectId/messages", async (request, response) => {
+  const parsed = projectMessageInput.safeParse(request.body);
+  if (!parsed.success) return response.status(422).json({ error: "Write a clear message for the project circle." });
+  const message = await workspace.addMessage(currentUser(response).id, request.params.projectId, parsed.data.body);
+  if (!message) return response.status(404).json({ error: "You do not have access to speak in this project circle." });
+  return response.status(201).json({ message });
 });
 
 workspaceRouter.post("/projects/:projectId/contributions", async (request, response) => {

@@ -1,6 +1,7 @@
 import {
   createProjectArtifact,
   createProjectContribution,
+  createProjectMessage,
   createProjectMilestone,
   createProjectReview,
   createWorkspaceProject,
@@ -8,6 +9,8 @@ import {
   getWorkspaceDashboard,
   getWorkspaceOverview,
   inviteProjectCollaborator,
+  removeProjectCollaborator,
+  updateProjectCollaboratorRole,
   updateProjectMilestone,
   updateWorkspaceProject,
   updateWorkspaceProjectPosition,
@@ -39,13 +42,13 @@ class WorkspaceEngine {
     WorkspaceState.selectedNodeId = null;
   }
 
-  public openProject(id: string): void {
+  public async openProject(id: string): Promise<void> {
     WorkspaceState.activeProjectId = id;
     WorkspaceState.activeSection = "Project";
     this.clearSelection();
     this.triggerMotion("action");
     this.scrollToSurface();
-    void this.loadProjectRoom(id);
+    await this.loadProjectRoom(id);
   }
 
   public openSection(section: WorkspaceSection, returnTo?: WorkspaceSection): void {
@@ -163,8 +166,26 @@ class WorkspaceEngine {
   public async inviteCollaborator(projectId: string, input: { email: string; role: "contributor" | "mentor" }): Promise<string> {
     const { message } = await inviteProjectCollaborator(projectId, input);
     await this.loadProjectRoom(projectId, false);
-    this.notify("Project circle updated.");
+    this.notify("Private invitation sent.");
     return message;
+  }
+
+  public async updateCollaboratorRole(projectId: string, memberId: string, role: "contributor" | "mentor"): Promise<void> {
+    await updateProjectCollaboratorRole(projectId, memberId, { role });
+    await this.loadProjectRoom(projectId, false);
+    this.notify("Project role updated.");
+  }
+
+  public async removeCollaborator(projectId: string, memberId: string): Promise<void> {
+    await removeProjectCollaborator(projectId, memberId);
+    await this.loadProjectRoom(projectId, false);
+    this.notify("Member removed from this project circle.");
+  }
+
+  public async sendProjectMessage(projectId: string, body: string): Promise<void> {
+    await createProjectMessage(projectId, { body });
+    await this.loadProjectRoom(projectId, false);
+    this.notify("Message sent to the project circle.");
   }
 
   public async recordProjectContribution(projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): Promise<string> {

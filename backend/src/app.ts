@@ -7,6 +7,7 @@ import { apiRouter } from "./routes/api.js";
 import { createAuthRouter } from "./routes/auth.js";
 import { healthRouter } from "./routes/health.js";
 import { createWorkspaceRouter } from "./routes/workspace.js";
+import { createTopRouter } from "./routes/top.js";
 
 export function buildApp(config: AppConfig) {
   const app = express();
@@ -37,6 +38,7 @@ export function buildApp(config: AppConfig) {
   app.use("/api/v1", apiRouter);
   app.use("/api/v1/auth", createAuthRouter(auth));
   app.use("/api/v1/workspace", createWorkspaceRouter(auth, config));
+  app.use("/api/v1/top", createTopRouter(auth, config));
 
   return app;
 }

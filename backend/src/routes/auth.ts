@@ -17,7 +17,9 @@ const loginInput = z.object({
 const profileInput = z.object({
   displayName: z.string().trim().min(2).max(48).optional(),
   biography: z.string().trim().max(500).nullable().optional(),
-  location: z.string().trim().max(80).nullable().optional()
+  location: z.string().trim().max(80).nullable().optional(),
+  fieldName: z.string().trim().min(2).max(48).nullable().optional(),
+  avatarDataUrl: z.string().regex(/^data:image\/(png|jpeg|webp);base64,/).max(500_000).nullable().optional()
 }).strict().refine((input) => Object.keys(input).length > 0, "Choose something to update.");
 
 export function createAuthRouter(auth: AuthService): Router {

@@ -1,8 +1,9 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 
 import type { AppConfig } from "../config/env.js";
 import { createDatabase } from "../db/client.js";
-import { contributions, profiles, projectActivity, projectArtifacts, projectMembers, projectMilestones, projects, reflections, users } from "../db/schema.js";
+import { contributions, notifications, profiles, projectActivity, projectArtifacts, projectInvitations, projectMembers, projectMessages, projectMilestones, projects, reflections, users } from "../db/schema.js";
+import { notificationHub } from "../realtime/notificationHub.js";
 import {
   addProjectArtifact,
   addProjectContribution,
@@ -23,13 +24,17 @@ import {
   type ProjectArtifact,
   type ProjectArtifactKind,
   type ProjectCollaborator,
+  type CollaborationInvitation,
   type ProjectContribution,
   type ProjectContributionType,
   type ProjectDirection,
   type ProjectFieldPositionInput,
   type ProjectMilestone,
   type ProjectMilestoneStatus,
+  type ProjectMessage,
+  type ProjectPendingInvitation,
   type ProjectReview,
+  type TopNotification,
   type ProjectUpdateInput,
   type WorkspaceNodeRecord,
   type WorkspaceProject,
@@ -47,7 +52,14 @@ export interface WorkspaceRepository {
   addMilestone(userId: string, projectId: string, title: string): Promise<ProjectMilestone | null>;
   setMilestoneStatus(userId: string, projectId: string, milestoneId: string, status: ProjectMilestoneStatus): Promise<ProjectMilestone | null>;
   addArtifact(userId: string, projectId: string, input: { title: string; kind: ProjectArtifactKind; note?: string }): Promise<ProjectArtifact | null>;
-  addCollaborator(userId: string, projectId: string, input: { email: string; role: "contributor" | "mentor" }): Promise<ProjectCollaborator | null>;
+  createInvitation(userId: string, projectId: string, input: { email: string; role: "contributor" | "mentor" }): Promise<ProjectPendingInvitation | null>;
+  updateCollaboratorRole(userId: string, projectId: string, memberId: string, role: "contributor" | "mentor"): Promise<ProjectCollaborator | null>;
+  removeCollaborator(userId: string, projectId: string, memberId: string): Promise<boolean>;
+  getInvitations(userId: string): Promise<CollaborationInvitation[]>;
+  respondToInvitation(userId: string, invitationId: string, response: "accepted" | "declined"): Promise<WorkspaceProject | null>;
+  getNotifications(userId: string): Promise<TopNotification[]>;
+  markNotificationRead(userId: string, notificationId: string): Promise<boolean>;
+  addMessage(userId: string, projectId: string, body: string): Promise<ProjectMessage | null>;
   addContribution(userId: string, projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): Promise<ProjectContribution | null>;
   addReview(userId: string, projectId: string, input: { proudOf: string; learned?: string; nextFocus?: string }): Promise<ProjectReview | null>;
   saveReflection(userId: string, answer: string): Promise<{ id: string; answer: string; createdAt: string }>;
@@ -79,7 +91,14 @@ class MemoryWorkspaceRepository implements WorkspaceRepository {
   public async addMilestone(userId: string, projectId: string, title: string) { return addProjectMilestone(userId, projectId, title); }
   public async setMilestoneStatus(userId: string, projectId: string, milestoneId: string, status: ProjectMilestoneStatus) { return setProjectMilestoneStatus(userId, projectId, milestoneId, status); }
   public async addArtifact(userId: string, projectId: string, input: { title: string; kind: ProjectArtifactKind; note?: string }) { return addProjectArtifact(userId, projectId, input); }
-  public async addCollaborator(_userId: string, _projectId: string, _input: { email: string; role: "contributor" | "mentor" }) { return null; }
+  public async createInvitation(_userId: string, _projectId: string, _input: { email: string; role: "contributor" | "mentor" }) { return null; }
+  public async updateCollaboratorRole(_userId: string, _projectId: string, _memberId: string, _role: "contributor" | "mentor") { return null; }
+  public async removeCollaborator(_userId: string, _projectId: string, _memberId: string) { return false; }
+  public async getInvitations(_userId: string) { return []; }
+  public async respondToInvitation(_userId: string, _invitationId: string, _response: "accepted" | "declined") { return null; }
+  public async getNotifications(_userId: string) { return []; }
+  public async markNotificationRead(_userId: string, _notificationId: string) { return false; }
+  public async addMessage(_userId: string, _projectId: string, _body: string) { return null; }
   public async addContribution(userId: string, projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }) { return addProjectContribution(userId, projectId, input); }
   public async addReview(userId: string, projectId: string, input: { proudOf: string; learned?: string; nextFocus?: string }) { return addProjectReview(userId, projectId, input); }
   public async saveReflection(userId: string, answer: string) { return saveReflection(userId, answer); }
@@ -200,12 +219,14 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
     if (!project) return null;
     const access = await this.getProjectAccess(userId, project);
     if (!access) return null;
-    const [milestoneRows, artifactRows, reviewRows, collaborators, contributionRows, activityRows] = await Promise.all([
+    const [milestoneRows, artifactRows, reviewRows, collaborators, contributionRows, messageRows, pendingInvitations, activityRows] = await Promise.all([
       this.database.select().from(projectMilestones).where(eq(projectMilestones.projectId, projectId)),
       this.listArtifacts(projectId),
       this.database.select().from(reflections).where(eq(reflections.projectId, projectId)),
       this.listCollaborators(project),
       this.listContributions(projectId),
+      this.listMessages(projectId),
+      access.canManage ? this.listPendingInvitations(projectId) : Promise.resolve([]),
       this.database.select().from(projectActivity).where(eq(projectActivity.projectId, projectId))
     ]);
     return {
@@ -215,35 +236,137 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
       reviews: reviewRows.map(toReview).sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
       collaborators,
       contributions: contributionRows,
+      messages: messageRows,
       access,
+      pendingInvitations,
       activity: activityRows.map(toActivity).sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     };
   }
 
-  public async addCollaborator(userId: string, projectId: string, input: { email: string; role: "contributor" | "mentor" }): Promise<ProjectCollaborator | null> {
+  public async createInvitation(userId: string, projectId: string, input: { email: string; role: "contributor" | "mentor" }): Promise<ProjectPendingInvitation | null> {
     const project = await this.findOwnedProject(userId, projectId);
     if (!project) return null;
 
     const email = input.email.trim().toLowerCase();
     const [person] = await this.database
-      .select({ userId: users.id, displayName: profiles.displayName })
+      .select({ userId: users.id, displayName: profiles.displayName, avatarDataUrl: profiles.avatarDataUrl })
       .from(users)
       .leftJoin(profiles, eq(profiles.userId, users.id))
       .where(eq(users.email, email));
-    if (!person) return null;
+    if (!person || person.userId === project.ownerId) return null;
 
-    const displayName = person.displayName ?? email.split("@")[0] ?? "TOP member";
-    if (person.userId === project.ownerId) {
-      return { userId: person.userId, displayName, role: "owner", joinedAt: iso(project.createdAt) };
-    }
+    const [existingMember] = await this.database.select({ userId: projectMembers.userId }).from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, person.userId)));
+    if (existingMember) return null;
 
     const now = new Date();
-    await this.database.insert(projectMembers).values({ projectId, userId: person.userId, role: input.role, joinedAt: now }).onConflictDoUpdate({
-      target: [projectMembers.projectId, projectMembers.userId],
-      set: { role: input.role }
-    });
-    await this.recordActivity(projectId, "circle-updated", "Project circle updated", `${displayName} is a ${input.role}.`, now);
-    return { userId: person.userId, displayName, role: input.role, joinedAt: iso(now) };
+    const [invitation] = await this.database.insert(projectInvitations).values({
+      projectId,
+      inviterId: userId,
+      inviteeId: person.userId,
+      role: input.role,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+      respondedAt: null
+    }).onConflictDoUpdate({
+      target: [projectInvitations.projectId, projectInvitations.inviteeId],
+      set: { inviterId: userId, role: input.role, status: "pending", updatedAt: now, respondedAt: null }
+    }).returning();
+    if (!invitation) throw new Error("TOP could not create this invitation.");
+
+    const displayName = person.displayName ?? email.split("@")[0] ?? "TOP member";
+    const inviterName = await this.userDisplayName(userId);
+    await this.createNotification(person.userId, invitation.id, "project-invitation", `${inviterName} invited you to ${project.title}`, `Join as a ${input.role} when you are ready.`, `/profile?panel=signals&invite=${invitation.id}`, now);
+    await this.recordActivity(projectId, "invitation-sent", "Project invitation sent", `${displayName} was invited as a ${input.role}.`, now);
+    return { id: invitation.id, inviteeId: person.userId, displayName, role: input.role, createdAt: iso(invitation.createdAt) };
+  }
+
+  public async updateCollaboratorRole(userId: string, projectId: string, memberId: string, role: "contributor" | "mentor"): Promise<ProjectCollaborator | null> {
+    const project = await this.findOwnedProject(userId, projectId);
+    if (!project || memberId === project.ownerId) return null;
+    const [member] = await this.database.update(projectMembers).set({ role }).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, memberId))).returning();
+    if (!member) return null;
+    const displayName = await this.userDisplayName(memberId);
+    const [profile] = await this.database.select({ avatarDataUrl: profiles.avatarDataUrl }).from(profiles).where(eq(profiles.userId, memberId));
+    const now = new Date();
+    await this.createNotification(memberId, projectId, "project-role-updated", `Your role changed in ${project.title}`, `You are now a ${role}.`, `/field?project=${projectId}`, now);
+    await this.recordActivity(projectId, "member-role-updated", "Project role updated", `${displayName} is now a ${role}.`, now);
+    return { userId: member.userId, displayName, avatarDataUrl: profile?.avatarDataUrl ?? null, role, joinedAt: iso(member.joinedAt) };
+  }
+
+  public async removeCollaborator(userId: string, projectId: string, memberId: string): Promise<boolean> {
+    const project = await this.findOwnedProject(userId, projectId);
+    if (!project || memberId === project.ownerId) return false;
+    const [member] = await this.database.delete(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, memberId))).returning();
+    if (!member) return false;
+    const displayName = await this.userDisplayName(memberId);
+    const now = new Date();
+    await this.createNotification(memberId, projectId, "project-membership-removed", `Your project-circle access changed`, `You no longer have access to ${project.title}.`, "/profile", now);
+    await this.recordActivity(projectId, "member-removed", "Member removed from project circle", `${displayName} no longer has access to this project.`, now);
+    return true;
+  }
+
+  public async getInvitations(userId: string): Promise<CollaborationInvitation[]> {
+    const rows = await this.database
+      .select({ invitation: projectInvitations, projectTitle: projects.title, inviterName: profiles.displayName, inviterEmail: users.email })
+      .from(projectInvitations)
+      .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
+      .innerJoin(users, eq(users.id, projectInvitations.inviterId))
+      .leftJoin(profiles, eq(profiles.userId, users.id))
+      .where(and(eq(projectInvitations.inviteeId, userId), eq(projectInvitations.status, "pending")))
+      .orderBy(desc(projectInvitations.createdAt));
+    return rows.map(({ invitation, projectTitle, inviterName, inviterEmail }) => ({ id: invitation.id, projectId: invitation.projectId, projectTitle, inviterName: inviterName ?? inviterEmail.split("@")[0] ?? "TOP member", role: invitation.role === "mentor" ? "mentor" : "contributor", createdAt: iso(invitation.createdAt) }));
+  }
+
+  public async respondToInvitation(userId: string, invitationId: string, response: "accepted" | "declined"): Promise<WorkspaceProject | null> {
+    const [invitation] = await this.database.update(projectInvitations).set({ status: response, updatedAt: new Date(), respondedAt: new Date() }).where(and(eq(projectInvitations.id, invitationId), eq(projectInvitations.inviteeId, userId), eq(projectInvitations.status, "pending"))).returning();
+    if (!invitation) return null;
+    const [project] = await this.database.select().from(projects).where(eq(projects.id, invitation.projectId));
+    if (!project) return null;
+    const now = new Date();
+    const memberName = await this.userDisplayName(userId);
+    if (response === "accepted") {
+      await this.database.insert(projectMembers).values({ projectId: project.id, userId, role: invitation.role, joinedAt: now }).onConflictDoUpdate({ target: [projectMembers.projectId, projectMembers.userId], set: { role: invitation.role } });
+      await this.createNotification(project.ownerId, project.id, "project-invitation-accepted", `${memberName} joined ${project.title}`, `They accepted your invitation as a ${invitation.role}.`, `/field?project=${project.id}&focus=conversation`, now);
+      await this.recordActivity(project.id, "invitation-accepted", "Project invitation accepted", `${memberName} joined as a ${invitation.role}.`, now);
+      return toProject(project).project;
+    }
+
+    await this.createNotification(project.ownerId, project.id, "project-invitation-declined", `${memberName} declined ${project.title}`, "The project circle remains unchanged.", `/field?project=${project.id}`, now);
+    return toProject(project).project;
+  }
+
+  public async getNotifications(userId: string): Promise<TopNotification[]> {
+    const rows = await this.database.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt)).limit(40);
+    return rows.map((notification) => ({ id: notification.id, type: notification.type, title: notification.title, detail: notification.detail, href: notification.href, readAt: notification.readAt ? iso(notification.readAt) : null, createdAt: iso(notification.createdAt) }));
+  }
+
+  public async markNotificationRead(userId: string, notificationId: string): Promise<boolean> {
+    const [notification] = await this.database.update(notifications).set({ readAt: new Date() }).where(and(eq(notifications.id, notificationId), eq(notifications.userId, userId))).returning();
+    return Boolean(notification);
+  }
+
+  public async addMessage(userId: string, projectId: string, body: string): Promise<ProjectMessage | null> {
+    const project = await this.findProject(userId, projectId);
+    if (!project || !(await this.getProjectAccess(userId, project))) return null;
+
+    const now = new Date();
+    const [message] = await this.database.insert(projectMessages).values({ projectId, authorId: userId, body, createdAt: now }).returning();
+    if (!message) throw new Error("TOP could not send this circle message.");
+
+    const authorName = await this.userDisplayName(userId);
+    const recipientIds = await this.listProjectAudience(project.id, project.ownerId);
+    await Promise.all(recipientIds.filter((recipientId) => recipientId !== userId).map((recipientId) => this.createNotification(
+      recipientId,
+      message.id,
+      "project-circle-message",
+      `${authorName} wrote in ${project.title}`,
+      "Open the project circle to read the message.",
+      `/field?project=${project.id}&focus=conversation`,
+      now
+    )));
+    await this.recordActivity(project.id, "circle-message-sent", "Project circle message sent", null, now);
+    return { id: message.id, projectId: message.projectId, authorId: message.authorId, authorName, body: message.body, createdAt: iso(message.createdAt) };
   }
 
   public async addContribution(userId: string, projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): Promise<ProjectContribution | null> {
@@ -370,21 +493,42 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
 
   private async listCollaborators(project: typeof projects.$inferSelect): Promise<ProjectCollaborator[]> {
     const [owner] = await this.database
-      .select({ userId: users.id, displayName: profiles.displayName })
+      .select({ userId: users.id, displayName: profiles.displayName, avatarDataUrl: profiles.avatarDataUrl })
       .from(users)
       .leftJoin(profiles, eq(profiles.userId, users.id))
       .where(eq(users.id, project.ownerId));
     const memberRows = await this.database
-      .select({ userId: users.id, displayName: profiles.displayName, role: projectMembers.role, joinedAt: projectMembers.joinedAt })
+      .select({ userId: users.id, displayName: profiles.displayName, avatarDataUrl: profiles.avatarDataUrl, role: projectMembers.role, joinedAt: projectMembers.joinedAt })
       .from(projectMembers)
       .innerJoin(users, eq(users.id, projectMembers.userId))
       .leftJoin(profiles, eq(profiles.userId, users.id))
       .where(eq(projectMembers.projectId, project.id));
     const ownerName = owner?.displayName ?? "Project owner";
     return [
-      { userId: project.ownerId, displayName: ownerName, role: "owner", joinedAt: iso(project.createdAt) },
-      ...memberRows.map((member) => ({ userId: member.userId, displayName: member.displayName ?? "TOP member", role: member.role === "mentor" ? "mentor" as const : "contributor" as const, joinedAt: iso(member.joinedAt) }))
+      { userId: project.ownerId, displayName: ownerName, avatarDataUrl: owner?.avatarDataUrl ?? null, role: "owner", joinedAt: iso(project.createdAt) },
+      ...memberRows.map((member) => ({ userId: member.userId, displayName: member.displayName ?? "TOP member", avatarDataUrl: member.avatarDataUrl, role: member.role === "mentor" ? "mentor" as const : "contributor" as const, joinedAt: iso(member.joinedAt) }))
     ];
+  }
+
+  private async listPendingInvitations(projectId: string): Promise<ProjectPendingInvitation[]> {
+    const rows = await this.database
+      .select({ invitation: projectInvitations, displayName: profiles.displayName, email: users.email })
+      .from(projectInvitations)
+      .innerJoin(users, eq(users.id, projectInvitations.inviteeId))
+      .leftJoin(profiles, eq(profiles.userId, users.id))
+      .where(and(eq(projectInvitations.projectId, projectId), eq(projectInvitations.status, "pending")))
+      .orderBy(desc(projectInvitations.createdAt));
+    return rows.map(({ invitation, displayName, email }) => ({ id: invitation.id, inviteeId: invitation.inviteeId, displayName: displayName ?? email.split("@")[0] ?? "TOP member", role: invitation.role === "mentor" ? "mentor" : "contributor", createdAt: iso(invitation.createdAt) }));
+  }
+
+  private async userDisplayName(userId: string): Promise<string> {
+    const [person] = await this.database.select({ displayName: profiles.displayName, email: users.email }).from(users).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(users.id, userId));
+    return person?.displayName ?? person?.email.split("@")[0] ?? "TOP member";
+  }
+
+  private async createNotification(userId: string, entityId: string, type: string, title: string, detail: string | null, href: string | null, createdAt: Date): Promise<void> {
+    await this.database.insert(notifications).values({ userId, entityId, type, title, detail, href, createdAt });
+    notificationHub.publish(userId);
   }
 
   private async listContributions(projectId: string): Promise<ProjectContribution[]> {
@@ -397,6 +541,22 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
     return rows
       .map(({ contribution, displayName, email }) => ({ id: contribution.id, projectId: contribution.projectId, contributorId: contribution.contributorId, contributorName: displayName ?? email.split("@")[0] ?? "TOP member", type: contribution.type as ProjectContributionType, description: contribution.description, evidenceUrl: contribution.evidenceUrl, createdAt: iso(contribution.createdAt) }))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  private async listMessages(projectId: string): Promise<ProjectMessage[]> {
+    const rows = await this.database
+      .select({ message: projectMessages, displayName: profiles.displayName, email: users.email })
+      .from(projectMessages)
+      .innerJoin(users, eq(users.id, projectMessages.authorId))
+      .leftJoin(profiles, eq(profiles.userId, users.id))
+      .where(eq(projectMessages.projectId, projectId))
+      .orderBy(desc(projectMessages.createdAt));
+    return rows.map(({ message, displayName, email }) => ({ id: message.id, projectId: message.projectId, authorId: message.authorId, authorName: displayName ?? email.split("@")[0] ?? "TOP member", body: message.body, createdAt: iso(message.createdAt) }));
+  }
+
+  private async listProjectAudience(projectId: string, ownerId: string): Promise<string[]> {
+    const members = await this.database.select({ userId: projectMembers.userId }).from(projectMembers).where(eq(projectMembers.projectId, projectId));
+    return [...new Set([ownerId, ...members.map((member) => member.userId)])];
   }
 
   private async listArtifacts(projectId: string): Promise<ProjectArtifact[]> {

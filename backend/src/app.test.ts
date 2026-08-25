@@ -264,4 +264,14 @@ describe("TOP API", () => {
     expect(project.body.project).toMatchObject({ direction: "community" });
     expect(project.body.seed).toMatchObject({ status: "archived", projectId: project.body.project.id });
   });
+
+  it("ends the browser session completely on logout", async () => {
+    const logout = await request(app).post("/api/v1/auth/logout").set("Cookie", sessionCookie);
+    expect(logout.status).toBe(204);
+    expect(logout.headers["set-cookie"]?.[0]).toContain("top_session=");
+    expect(logout.headers["set-cookie"]?.[0]).toContain("Max-Age=0");
+
+    const afterLogout = await request(app).get("/api/v1/auth/session").set("Cookie", sessionCookie);
+    expect(afterLogout.status).toBe(401);
+  });
 });

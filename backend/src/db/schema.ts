@@ -122,6 +122,15 @@ export const seeds = pgTable("seeds", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
 
+export const seedNotes = pgTable("seed_notes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  seedId: uuid("seed_id")
+    .notNull()
+    .references(() => seeds.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
+
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
   seedId: uuid("seed_id").references(() => seeds.id, { onDelete: "set null" }),
@@ -159,6 +168,7 @@ export const projectArtifacts = pgTable("project_artifacts", {
   projectId: uuid("project_id")
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
+  contributorId: uuid("contributor_id").references(() => users.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   kind: projectArtifactKind("kind").notNull(),
   note: text("note"),
@@ -260,6 +270,7 @@ export const reflections = pgTable("reflections", {
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
   periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
   periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
   proudOf: text("proud_of"),

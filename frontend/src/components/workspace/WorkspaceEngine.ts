@@ -1,14 +1,18 @@
 import {
   createProjectArtifact,
+  createProjectContribution,
   createProjectMilestone,
+  createProjectReview,
   createWorkspaceProject,
   getWorkspaceProject,
   getWorkspaceDashboard,
   getWorkspaceOverview,
+  inviteProjectCollaborator,
   updateProjectMilestone,
   updateWorkspaceProject,
   updateWorkspaceProjectPosition,
   type ProjectArtifactKind,
+  type ProjectContributionType,
   type ProjectDirection,
   type WorkspaceProjectDetail,
   type WorkspaceProject
@@ -147,6 +151,27 @@ class WorkspaceEngine {
     await this.loadProjectRoom(projectId, false);
     this.notify("Evidence recorded in your project trail.");
     return artifact;
+  }
+
+  public async recordProjectReview(projectId: string, input: { proudOf: string; learned?: string; nextFocus?: string }): Promise<string> {
+    const { message } = await createProjectReview(projectId, input);
+    await this.loadProjectRoom(projectId, false);
+    this.notify("Project review kept. Let it shape the next return.");
+    return message;
+  }
+
+  public async inviteCollaborator(projectId: string, input: { email: string; role: "contributor" | "mentor" }): Promise<string> {
+    const { message } = await inviteProjectCollaborator(projectId, input);
+    await this.loadProjectRoom(projectId, false);
+    this.notify("Project circle updated.");
+    return message;
+  }
+
+  public async recordProjectContribution(projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): Promise<string> {
+    const { message } = await createProjectContribution(projectId, input);
+    await this.loadProjectRoom(projectId, false);
+    this.notify("Contribution recorded in the project trail.");
+    return message;
   }
 
   public save(): boolean {

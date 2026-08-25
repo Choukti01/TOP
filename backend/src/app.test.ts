@@ -155,17 +155,45 @@ describe("TOP API", () => {
 
     expect(artifact.status).toBe(201);
 
+    const review = await request(app)
+      .post(`/api/v1/workspace/projects/${createdProjectId}/reviews`)
+      .set("Cookie", sessionCookie)
+      .send({
+        proudOf: "I turned the first invitation into a real conversation.",
+        learned: "A small, specific invitation makes it easier for people to join.",
+        nextFocus: "Confirm the first repair circle date."
+      });
+
+    expect(review.status).toBe(201);
+    expect(review.body.message).toContain("Project review kept");
+
+    const contribution = await request(app)
+      .post(`/api/v1/workspace/projects/${createdProjectId}/contributions`)
+      .set("Cookie", sessionCookie)
+      .send({
+        type: "operations",
+        description: "Confirmed a workbench, wrote the opening checklist, and made the gathering practical.",
+        evidenceUrl: "https://example.com/repair-circle-checklist"
+      });
+
+    expect(contribution.status).toBe(201);
+    expect(contribution.body.contribution).toMatchObject({ type: "operations", contributorName: "You" });
+
     const detail = await request(app).get(`/api/v1/workspace/projects/${createdProjectId}`).set("Cookie", sessionCookie);
 
     expect(detail.status).toBe(200);
     expect(detail.body.project.progress).toBe(100);
     expect(detail.body.milestones).toHaveLength(1);
     expect(detail.body.artifacts).toHaveLength(1);
+    expect(detail.body.reviews).toHaveLength(1);
+    expect(detail.body.contributions).toHaveLength(1);
     expect(detail.body.activity.map((activity: { type: string }) => activity.type)).toEqual(expect.arrayContaining([
       "project-started",
       "milestone-added",
       "milestone-completed",
-      "artifact-recorded"
+      "artifact-recorded",
+      "review-recorded",
+      "contribution-recorded"
     ]));
   });
 
@@ -202,6 +230,38 @@ describe("TOP API", () => {
     expect(dashboard.status).toBe(200);
     expect(dashboard.body.summary).toMatchObject({ projectCount: 1, completedMilestoneCount: 1, evidenceCount: 1 });
     expect(dashboard.body.openActions).toHaveLength(1);
-    expect(dashboard.body.recentActivity).toHaveLength(4);
+    expect(dashboard.body.recentActivity).toHaveLength(7);
+  });
+
+  it("lets an early idea become a tended seed before it becomes a project", async () => {
+    const planted = await request(app)
+      .post("/api/v1/workspace/seeds")
+      .set("Cookie", sessionCookie)
+      .send({
+        title: "Library of repair skills",
+        problem: "Useful repair knowledge is often difficult for neighbours to find and share.",
+        desiredOutcome: "A small local library where people can learn practical repair skills together."
+      });
+
+    expect(planted.status).toBe(201);
+    const seedId = planted.body.seed.id;
+
+    const tending = await request(app)
+      .post(`/api/v1/workspace/seeds/${seedId}/entries`)
+      .set("Cookie", sessionCookie)
+      .send({ body: "A neighbour already offered a workbench for the first gathering." });
+    expect(tending.status).toBe(201);
+
+    const detail = await request(app).get(`/api/v1/workspace/seeds/${seedId}`).set("Cookie", sessionCookie);
+    expect(detail.status).toBe(200);
+    expect(detail.body).toMatchObject({ status: "growing", entryCount: 1 });
+
+    const project = await request(app)
+      .post(`/api/v1/workspace/seeds/${seedId}/turn-into-project`)
+      .set("Cookie", sessionCookie)
+      .send({ direction: "community", nextAction: "Invite three neighbours to name the first repair skills they want to share." });
+    expect(project.status).toBe(201);
+    expect(project.body.project).toMatchObject({ direction: "community" });
+    expect(project.body.seed).toMatchObject({ status: "archived", projectId: project.body.project.id });
   });
 });

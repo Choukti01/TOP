@@ -1,6 +1,7 @@
-// Keep the browser app and API on the same localhost site in development so
-// the secure session cookie is never treated as a third-party cookie.
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+// Local development uses the API on this computer. A deployed TOP site must
+// receive an explicit HTTPS API URL at build time; a visitor's localhost is
+// never a public backend.
+const apiBaseUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, "") ?? (import.meta.env.DEV ? "http://localhost:3000" : "");
 
 export interface ApiHealth {
   status: "ok";
@@ -19,9 +20,12 @@ export interface AuthUser {
 
 export type ProjectDirection = "personal" | "creative" | "learning" | "community" | "venture" | "other";
 export type ProjectStatus = "planning" | "active" | "paused" | "completed";
+export type SeedStatus = "draft" | "planted" | "growing" | "archived";
 export type ProjectMilestoneStatus = "planned" | "completed";
 export type ProjectArtifactKind = "atelier" | "canvas" | "blueprint" | "note" | "link" | "other";
-export type ProjectActivityType = "project-started" | "next-action-updated" | "milestone-added" | "milestone-completed" | "milestone-reopened" | "artifact-recorded";
+export type ProjectMemberRole = "owner" | "contributor" | "mentor";
+export type ProjectContributionType = "idea" | "research" | "design" | "code" | "funding" | "mentorship" | "operations" | "other";
+export type ProjectActivityType = "project-started" | "project-state-updated" | "next-action-updated" | "milestone-added" | "milestone-completed" | "milestone-reopened" | "artifact-recorded" | "circle-updated" | "contribution-recorded" | "review-recorded";
 
 export interface WorkspaceNodeData {
   id: string;
@@ -57,10 +61,44 @@ export interface ProjectMilestone {
 export interface ProjectArtifact {
   id: string;
   projectId: string;
+  contributorId: string | null;
+  contributorName: string | null;
   title: string;
   kind: ProjectArtifactKind;
   note: string | null;
   createdAt: string;
+}
+
+export interface ProjectReview {
+  id: string;
+  projectId: string;
+  proudOf: string;
+  learned: string | null;
+  nextFocus: string | null;
+  createdAt: string;
+}
+
+export interface ProjectCollaborator {
+  userId: string;
+  displayName: string;
+  role: ProjectMemberRole;
+  joinedAt: string;
+}
+
+export interface ProjectContribution {
+  id: string;
+  projectId: string;
+  contributorId: string;
+  contributorName: string;
+  type: ProjectContributionType;
+  description: string;
+  evidenceUrl: string | null;
+  createdAt: string;
+}
+
+export interface ProjectAccess {
+  role: ProjectMemberRole;
+  canManage: boolean;
 }
 
 export interface ProjectActivity {
@@ -76,7 +114,34 @@ export interface WorkspaceProjectDetail {
   project: WorkspaceProject;
   milestones: ProjectMilestone[];
   artifacts: ProjectArtifact[];
+  reviews: ProjectReview[];
+  collaborators: ProjectCollaborator[];
+  contributions: ProjectContribution[];
+  access: ProjectAccess;
   activity: ProjectActivity[];
+}
+
+export interface TopSeed {
+  id: string;
+  title: string;
+  problem: string;
+  desiredOutcome: string;
+  status: SeedStatus;
+  createdAt: string;
+  updatedAt: string;
+  entryCount: number;
+  projectId: string | null;
+}
+
+export interface SeedEntry {
+  id: string;
+  seedId: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface SeedDetail extends TopSeed {
+  entries: SeedEntry[];
 }
 
 export interface WorkspaceOverview {
@@ -126,6 +191,10 @@ interface RequestOptions {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  if (!apiBaseUrl) {
+    throw new Error("TOP accounts are not live yet. The public experience is online, but its secure workspace service is still being connected.");
+  }
+
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 10_000);
   let response: Response;
@@ -193,6 +262,30 @@ export function getWorkspaceDashboard(): Promise<WorkspaceDashboard> {
   return request<WorkspaceDashboard>("/api/v1/workspace/dashboard");
 }
 
+export function getSeeds(): Promise<{ seeds: TopSeed[] }> {
+  return request<{ seeds: TopSeed[] }>("/api/v1/workspace/seeds");
+}
+
+export function getSeed(seedId: string): Promise<SeedDetail> {
+  return request<SeedDetail>(`/api/v1/workspace/seeds/${encodeURIComponent(seedId)}`);
+}
+
+export function createSeed(input: { title: string; problem: string; desiredOutcome: string }): Promise<{ seed: TopSeed }> {
+  return request<{ seed: TopSeed }>("/api/v1/workspace/seeds", { method: "POST", body: input });
+}
+
+export function createSeedEntry(seedId: string, input: { body: string }): Promise<{ entry: SeedEntry }> {
+  return request<{ entry: SeedEntry }>(`/api/v1/workspace/seeds/${encodeURIComponent(seedId)}/entries`, { method: "POST", body: input });
+}
+
+export function updateSeedStatus(seedId: string, input: { status: SeedStatus }): Promise<{ seed: TopSeed }> {
+  return request<{ seed: TopSeed }>(`/api/v1/workspace/seeds/${encodeURIComponent(seedId)}/status`, { method: "PATCH", body: input });
+}
+
+export function turnSeedIntoProject(seedId: string, input: { direction: ProjectDirection; nextAction: string }): Promise<{ project: WorkspaceProject; seed: TopSeed | null }> {
+  return request<{ project: WorkspaceProject; seed: TopSeed | null }>(`/api/v1/workspace/seeds/${encodeURIComponent(seedId)}/turn-into-project`, { method: "POST", body: input });
+}
+
 export function getPersonalDashboard(): Promise<PersonalDashboard> {
   return request<PersonalDashboard>("/api/v1/workspace/profile-dashboard");
 }
@@ -243,6 +336,27 @@ export function updateProjectMilestone(projectId: string, milestoneId: string, i
 
 export function createProjectArtifact(projectId: string, input: { title: string; kind: ProjectArtifactKind; note?: string }): Promise<{ artifact: ProjectArtifact }> {
   return request<{ artifact: ProjectArtifact }>(`/api/v1/workspace/projects/${encodeURIComponent(projectId)}/artifacts`, {
+    method: "POST",
+    body: input
+  });
+}
+
+export function inviteProjectCollaborator(projectId: string, input: { email: string; role: "contributor" | "mentor" }): Promise<{ collaborator: ProjectCollaborator; message: string }> {
+  return request<{ collaborator: ProjectCollaborator; message: string }>(`/api/v1/workspace/projects/${encodeURIComponent(projectId)}/collaborators`, {
+    method: "POST",
+    body: input
+  });
+}
+
+export function createProjectContribution(projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): Promise<{ contribution: ProjectContribution; message: string }> {
+  return request<{ contribution: ProjectContribution; message: string }>(`/api/v1/workspace/projects/${encodeURIComponent(projectId)}/contributions`, {
+    method: "POST",
+    body: input
+  });
+}
+
+export function createProjectReview(projectId: string, input: { proudOf: string; learned?: string; nextFocus?: string }): Promise<{ review: ProjectReview; message: string }> {
+  return request<{ review: ProjectReview; message: string }>(`/api/v1/workspace/projects/${encodeURIComponent(projectId)}/reviews`, {
     method: "POST",
     body: input
   });

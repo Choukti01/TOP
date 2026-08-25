@@ -3,7 +3,9 @@ export type WorkspaceNodeStatus = "planning" | "active" | "paused" | "completed"
 export type ProjectDirection = "personal" | "creative" | "learning" | "community" | "venture" | "other";
 export type ProjectMilestoneStatus = "planned" | "completed";
 export type ProjectArtifactKind = "atelier" | "canvas" | "blueprint" | "note" | "link" | "other";
-export type ProjectActivityType = "project-started" | "next-action-updated" | "milestone-added" | "milestone-completed" | "milestone-reopened" | "artifact-recorded";
+export type ProjectActivityType = "project-started" | "project-state-updated" | "next-action-updated" | "milestone-added" | "milestone-completed" | "milestone-reopened" | "artifact-recorded" | "circle-updated" | "contribution-recorded" | "review-recorded";
+export type ProjectMemberRole = "owner" | "contributor" | "mentor";
+export type ProjectContributionType = "idea" | "research" | "design" | "code" | "funding" | "mentorship" | "operations" | "other";
 
 export interface WorkspaceNodeRecord {
   id: string;
@@ -39,6 +41,8 @@ export interface ProjectMilestone {
 export interface ProjectArtifact {
   id: string;
   projectId: string;
+  contributorId: string | null;
+  contributorName: string | null;
   title: string;
   kind: ProjectArtifactKind;
   note: string | null;
@@ -54,10 +58,46 @@ export interface ProjectActivity {
   createdAt: string;
 }
 
+export interface ProjectReview {
+  id: string;
+  projectId: string;
+  proudOf: string;
+  learned: string | null;
+  nextFocus: string | null;
+  createdAt: string;
+}
+
+export interface ProjectCollaborator {
+  userId: string;
+  displayName: string;
+  role: ProjectMemberRole;
+  joinedAt: string;
+}
+
+export interface ProjectContribution {
+  id: string;
+  projectId: string;
+  contributorId: string;
+  contributorName: string;
+  type: ProjectContributionType;
+  description: string;
+  evidenceUrl: string | null;
+  createdAt: string;
+}
+
+export interface ProjectAccess {
+  role: ProjectMemberRole;
+  canManage: boolean;
+}
+
 export interface WorkspaceProjectDetail {
   project: WorkspaceProject;
   milestones: ProjectMilestone[];
   artifacts: ProjectArtifact[];
+  reviews: ProjectReview[];
+  collaborators: ProjectCollaborator[];
+  contributions: ProjectContribution[];
+  access: ProjectAccess;
   activity: ProjectActivity[];
 }
 
@@ -76,11 +116,14 @@ interface ProjectInput {
   purpose: string;
   direction: ProjectDirection;
   nextAction: string;
+  seedId?: string;
 }
 
 interface PersonalWorkspace {
   projects: WorkspaceProject[];
   reflections: Array<{ id: string; answer: string; createdAt: string }>;
+  projectReviews: ProjectReview[];
+  contributions: ProjectContribution[];
   milestones: ProjectMilestone[];
   artifacts: ProjectArtifact[];
   activities: ProjectActivity[];
@@ -92,7 +135,7 @@ const workspaces = new Map<string, PersonalWorkspace>();
 function workspaceFor(userId: string): PersonalWorkspace {
   const existing = workspaces.get(userId);
   if (existing) return existing;
-  const workspace: PersonalWorkspace = { projects: [], reflections: [], milestones: [], artifacts: [], activities: [] };
+  const workspace: PersonalWorkspace = { projects: [], reflections: [], projectReviews: [], contributions: [], milestones: [], artifacts: [], activities: [] };
   workspaces.set(userId, workspace);
   return workspace;
 }
@@ -110,7 +153,7 @@ export function getWorkspaceDashboard(userId: string) {
     research: [],
     assets: [],
     worlds: [],
-    reflectionCount: workspace.reflections.length
+    reflectionCount: workspace.reflections.length + workspace.projectReviews.length
   };
 }
 
@@ -126,7 +169,7 @@ export function getPersonalDashboard(userId: string) {
       completedMilestoneCount: completedMilestones,
       milestoneCount: workspace.milestones.length,
       evidenceCount: workspace.artifacts.length,
-      reflectionCount: workspace.reflections.length
+      reflectionCount: workspace.reflections.length + workspace.projectReviews.length
     },
     projects: workspace.projects.map((project) => ({ ...project })),
     openActions: activeProjects
@@ -185,6 +228,9 @@ export function updateProject(userId: string, projectId: string, input: ProjectU
   if (input.nextAction !== undefined) {
     addActivity(workspace, project.id, "next-action-updated", "Next move protected", input.nextAction, project.updatedAt);
   }
+  if (input.status !== undefined) {
+    addActivity(workspace, project.id, "project-state-updated", projectStateActivityTitle(input.status), null, project.updatedAt);
+  }
   return { ...project };
 }
 
@@ -213,6 +259,16 @@ export function getProjectDetail(userId: string, projectId: string): WorkspacePr
     artifacts: workspace.artifacts
       .filter((artifact) => artifact.projectId === projectId)
       .map((artifact) => ({ ...artifact })),
+    reviews: workspace.projectReviews
+      .filter((review) => review.projectId === projectId)
+      .map((review) => ({ ...review }))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    collaborators: [{ userId, displayName: "You", role: "owner", joinedAt: project.createdAt }],
+    contributions: workspace.contributions
+      .filter((contribution) => contribution.projectId === projectId)
+      .map((contribution) => ({ ...contribution }))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    access: { role: "owner", canManage: true },
     activity: workspace.activities
       .filter((activity) => activity.projectId === projectId)
       .map((activity) => ({ ...activity }))
@@ -271,6 +327,8 @@ export function addProjectArtifact(userId: string, projectId: string, input: { t
   const artifact: ProjectArtifact = {
     id: crypto.randomUUID(),
     projectId,
+    contributorId: userId,
+    contributorName: "You",
     title: input.title,
     kind: input.kind,
     note: input.note || null,
@@ -281,6 +339,50 @@ export function addProjectArtifact(userId: string, projectId: string, input: { t
   touchProject(workspace, project, now);
   addActivity(workspace, projectId, "artifact-recorded", "Evidence recorded", input.title, now);
   return { ...artifact };
+}
+
+export function addProjectContribution(userId: string, projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): ProjectContribution | null {
+  const workspace = workspaceFor(userId);
+  const project = workspace.projects.find((candidate) => candidate.id === projectId);
+  if (!project) return null;
+
+  const now = new Date().toISOString();
+  const contribution: ProjectContribution = {
+    id: crypto.randomUUID(),
+    projectId,
+    contributorId: userId,
+    contributorName: "You",
+    type: input.type,
+    description: input.description,
+    evidenceUrl: input.evidenceUrl || null,
+    createdAt: now
+  };
+
+  workspace.contributions.push(contribution);
+  project.updatedAt = now;
+  addActivity(workspace, projectId, "contribution-recorded", `${contributionTypeLabel(input.type)} contribution added`, input.description, now);
+  return { ...contribution };
+}
+
+export function addProjectReview(userId: string, projectId: string, input: { proudOf: string; learned?: string; nextFocus?: string }): ProjectReview | null {
+  const workspace = workspaceFor(userId);
+  const project = workspace.projects.find((candidate) => candidate.id === projectId);
+  if (!project) return null;
+
+  const now = new Date().toISOString();
+  const review: ProjectReview = {
+    id: crypto.randomUUID(),
+    projectId,
+    proudOf: input.proudOf,
+    learned: input.learned || null,
+    nextFocus: input.nextFocus || null,
+    createdAt: now
+  };
+
+  workspace.projectReviews.push(review);
+  project.updatedAt = now;
+  addActivity(workspace, projectId, "review-recorded", "Project review kept", input.proudOf, now);
+  return { ...review };
 }
 
 export function saveReflection(userId: string, answer: string) {
@@ -324,6 +426,14 @@ function touchProject(workspace: PersonalWorkspace, project: WorkspaceProject, u
   const relatedMilestones = workspace.milestones.filter((milestone) => milestone.projectId === project.id);
   const completedMilestones = relatedMilestones.filter((milestone) => milestone.status === "completed").length;
   project.progress = relatedMilestones.length === 0 ? 0 : Math.round((completedMilestones / relatedMilestones.length) * 100);
+}
+
+function projectStateActivityTitle(status: WorkspaceNodeStatus): string {
+  return { planning: "Project returned to beginning", active: "Project returned to practice", paused: "Project paused", completed: "Project completed" }[status];
+}
+
+function contributionTypeLabel(type: ProjectContributionType): string {
+  return { idea: "Idea", research: "Research", design: "Design", code: "Code", funding: "Funding", mentorship: "Mentorship", operations: "Operations", other: "Work" }[type];
 }
 
 function addActivity(workspace: PersonalWorkspace, projectId: string, type: ProjectActivityType, title: string, detail: string | null, createdAt: string): void {

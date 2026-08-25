@@ -5,6 +5,7 @@ import type { ProjectDirection, WorkspaceDashboard, WorkspaceProjectDetail } fro
 
 export type WorkspaceSection =
     | "Overview"
+    | "Seeds"
     | "Projects"
     | "Project"
     | "Atelier"

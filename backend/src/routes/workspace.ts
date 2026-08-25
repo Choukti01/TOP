@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 
 import type { AppConfig } from "../config/env.js";
+import { createSeedSchema, seedStatusSchema } from "../modules/seeds/contracts.js";
+import { createSeedRepository } from "../seeds/repository.js";
 import { createWorkspaceRepository } from "../workspace/repository.js";
 import { AuthService } from "../auth/service.js";
 import { currentUser, requireAuthenticatedUser } from "./auth.js";
@@ -9,9 +11,11 @@ import { currentUser, requireAuthenticatedUser } from "./auth.js";
 export function createWorkspaceRouter(auth: AuthService, config: Pick<AppConfig, "databaseUrl" | "databaseEnabled">): Router {
 const workspaceRouter = Router();
 const workspace = createWorkspaceRepository(config);
+const seedGarden = createSeedRepository(config);
 workspaceRouter.use(requireAuthenticatedUser(auth));
 
 const directionValues = ["personal", "creative", "learning", "community", "venture", "other"] as const;
+const contributionValues = ["idea", "research", "design", "code", "funding", "mentorship", "operations", "other"] as const;
 
 const projectInput = z.object({
   title: z.string().trim().min(3).max(80),
@@ -44,12 +48,38 @@ const artifactInput = z.object({
   note: z.string().trim().max(500).optional()
 }).strict();
 
+const collaboratorInput = z.object({
+  email: z.string().trim().email().max(254),
+  role: z.enum(["contributor", "mentor"])
+}).strict();
+
+const contributionInput = z.object({
+  type: z.enum(contributionValues),
+  description: z.string().trim().min(3).max(1_000),
+  evidenceUrl: z.string().trim().url().max(500).refine((value) => /^https?:\/\//i.test(value), "Evidence must be an HTTP(S) link.").optional()
+}).strict();
+
+const projectReviewInput = z.object({
+  proudOf: z.string().trim().min(3).max(800),
+  learned: z.string().trim().max(500).optional(),
+  nextFocus: z.string().trim().max(180).optional()
+}).strict();
+
 const reflectionInput = z.object({
   answer: z.string().trim().min(3).max(800)
 }).strict();
 
 const focusInput = z.object({
   projectId: z.string().trim().min(1).max(80).optional()
+}).strict();
+
+const seedEntryInput = z.object({
+  body: z.string().trim().min(3).max(1_000)
+}).strict();
+
+const seedConversionInput = z.object({
+  direction: z.enum(directionValues),
+  nextAction: z.string().trim().min(3).max(180)
 }).strict();
 
 workspaceRouter.get("/overview", async (_request, response) => {
@@ -70,6 +100,59 @@ workspaceRouter.get("/dashboard", async (_request, response) => {
 
 workspaceRouter.get("/profile-dashboard", async (_request, response) => {
   response.status(200).json(await workspace.getPersonalDashboard(currentUser(response).id));
+});
+
+workspaceRouter.get("/seeds", async (_request, response) => {
+  response.status(200).json({ seeds: await seedGarden.list(currentUser(response).id) });
+});
+
+workspaceRouter.post("/seeds", async (request, response) => {
+  const parsed = createSeedSchema.strict().safeParse(request.body);
+  if (!parsed.success) return response.status(422).json({ error: "A seed needs a clear name, tension, and hoped-for change." });
+  return response.status(201).json({ seed: await seedGarden.create(currentUser(response).id, parsed.data) });
+});
+
+workspaceRouter.get("/seeds/:seedId", async (request, response) => {
+  const seed = await seedGarden.get(currentUser(response).id, request.params.seedId);
+  if (!seed) return response.status(404).json({ error: "That seed is no longer in your garden." });
+  return response.status(200).json(seed);
+});
+
+workspaceRouter.post("/seeds/:seedId/entries", async (request, response) => {
+  const parsed = seedEntryInput.safeParse(request.body);
+  if (!parsed.success) return response.status(422).json({ error: "Write a few honest words before tending this seed." });
+  const entry = await seedGarden.addEntry(currentUser(response).id, request.params.seedId, parsed.data.body);
+  if (!entry) return response.status(404).json({ error: "That seed cannot be tended right now." });
+  return response.status(201).json({ entry });
+});
+
+workspaceRouter.patch("/seeds/:seedId/status", async (request, response) => {
+  const parsed = z.object({ status: seedStatusSchema }).strict().safeParse(request.body);
+  if (!parsed.success) return response.status(422).json({ error: "Choose a truthful state for this seed." });
+  const seed = await seedGarden.setStatus(currentUser(response).id, request.params.seedId, parsed.data.status);
+  if (!seed) return response.status(404).json({ error: "That seed is no longer in your garden." });
+  return response.status(200).json({ seed });
+});
+
+workspaceRouter.post("/seeds/:seedId/turn-into-project", async (request, response) => {
+  const parsed = seedConversionInput.safeParse(request.body);
+  if (!parsed.success) return response.status(422).json({ error: "Choose a direction and one next action before beginning this project." });
+  const userId = currentUser(response).id;
+  const seed = await seedGarden.get(userId, request.params.seedId);
+  if (!seed) return response.status(404).json({ error: "That seed is no longer in your garden." });
+  if (seed.projectId) return response.status(409).json({ error: "This seed already has a project in your field." });
+  if (seed.status === "archived") return response.status(409).json({ error: "Restore this seed before turning it into a project." });
+
+  const project = await workspace.createProject(userId, {
+    seedId: seed.id,
+    title: seed.title.slice(0, 80),
+    purpose: seed.desiredOutcome.slice(0, 280),
+    direction: parsed.data.direction,
+    nextAction: parsed.data.nextAction
+  });
+  await seedGarden.setStatus(userId, seed.id, "archived");
+  const archivedSeed = await seedGarden.linkProject(userId, seed.id, project.id);
+  return response.status(201).json({ project, seed: archivedSeed });
 });
 
 workspaceRouter.post("/projects", async (request, response) => {
@@ -158,6 +241,45 @@ workspaceRouter.post("/projects/:projectId/artifacts", async (request, response)
   if (!artifact) return response.status(404).json({ error: "That project no longer exists in this field." });
 
   return response.status(201).json({ artifact });
+});
+
+workspaceRouter.post("/projects/:projectId/collaborators", async (request, response) => {
+  const parsed = collaboratorInput.safeParse(request.body);
+
+  if (!parsed.success) {
+    return response.status(422).json({ error: "Enter the email of a registered TOP member and choose their role." });
+  }
+
+  const collaborator = await workspace.addCollaborator(currentUser(response).id, request.params.projectId, parsed.data);
+  if (!collaborator) return response.status(404).json({ error: "That person is not a registered TOP member, or this project is not yours to invite into." });
+
+  return response.status(201).json({ collaborator, message: `${collaborator.displayName} now has a place in this project circle.` });
+});
+
+workspaceRouter.post("/projects/:projectId/contributions", async (request, response) => {
+  const parsed = contributionInput.safeParse(request.body);
+
+  if (!parsed.success) {
+    return response.status(422).json({ error: "A contribution needs a clear type, description, and a valid HTTP(S) evidence link when you include one." });
+  }
+
+  const contribution = await workspace.addContribution(currentUser(response).id, request.params.projectId, parsed.data);
+  if (!contribution) return response.status(404).json({ error: "You do not have access to contribute to this project." });
+
+  return response.status(201).json({ contribution, message: "Contribution recorded in the project trail." });
+});
+
+workspaceRouter.post("/projects/:projectId/reviews", async (request, response) => {
+  const parsed = projectReviewInput.safeParse(request.body);
+
+  if (!parsed.success) {
+    return response.status(422).json({ error: "Name one thing that moved forward before keeping this review." });
+  }
+
+  const review = await workspace.addReview(currentUser(response).id, request.params.projectId, parsed.data);
+  if (!review) return response.status(404).json({ error: "That project no longer exists in this field." });
+
+  return response.status(201).json({ review, message: "Project review kept. Let the learning guide your next return." });
 });
 
 workspaceRouter.post("/reflections", async (request, response) => {

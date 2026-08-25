@@ -82,6 +82,7 @@ const profileInitials = computed(() => (authState.user?.displayName ?? "TOP").sp
 
 const navigation: Array<{ name: WorkspaceSection; icon: string; kicker: string }> = [
   { name: "Overview", icon: "◉", kicker: "YOUR FIELD" },
+  { name: "Seeds", icon: "✧", kicker: "BEGIN" },
   { name: "Projects", icon: "△", kicker: "MAKE" },
   { name: "Atelier", icon: "✧", kicker: "ATELIER" },
   { name: "Studio", icon: "✦", kicker: "CREATE" },

@@ -10,7 +10,8 @@
     </header>
 
     <div v-if="isNativeSection" class="surface-content">
-      <Atelier v-if="WorkspaceState.activeSection === 'Atelier'" />
+      <SeedGarden v-if="WorkspaceState.activeSection === 'Seeds'" />
+      <Atelier v-else-if="WorkspaceState.activeSection === 'Atelier'" />
       <CraftStudio v-else-if="WorkspaceState.activeSection === 'Studio'" />
       <BlueprintBuilder v-else />
     </div>
@@ -40,9 +41,10 @@
           <div class="room-heading"><span>{{ directionLabel(activeProject.direction) }}</span><small>{{ statusLabel(activeProject.status) }}</small></div>
           <h2>{{ activeProject.title }}</h2>
           <p>{{ activeProject.purpose }}</p>
+          <dl class="project-compass" aria-label="Project compass"><div><dt>THE MISSION</dt><dd>{{ activeProject.title }}</dd></div><div><dt>THE OUTCOME THAT MATTERS</dt><dd>{{ activeProject.purpose }}</dd></div><div><dt>NEXT TRUE MOVE</dt><dd>{{ activeProject.nextAction }}</dd></div></dl>
           <section class="project-state" aria-label="Project state">
             <div><span>THE PROJECT STATE</span><p>{{ stateCopy(activeProject.status) }}</p></div>
-            <div class="state-actions">
+            <div v-if="activeProjectDetail?.access.canManage !== false" class="state-actions">
               <button type="button" :class="{ selected: activeProject.status === 'active' }" :disabled="savingProjectStatus || activeProject.status === 'active'" @click="setProjectStatus('active')">In practice</button>
               <button type="button" :class="{ selected: activeProject.status === 'paused' }" :disabled="savingProjectStatus || activeProject.status === 'paused'" @click="setProjectStatus('paused')">Pause</button>
               <button type="button" :class="{ selected: activeProject.status === 'completed' }" :disabled="savingProjectStatus || activeProject.status === 'completed'" @click="setProjectStatus('completed')">Complete</button>
@@ -50,27 +52,34 @@
           </section>
           <form class="next-action" @submit.prevent="saveNextAction">
             <label for="next-action">THE NEXT ACTION THAT MAKES THIS REAL</label>
-            <textarea id="next-action" v-model.trim="nextActionDraft" maxlength="180" placeholder="Write one action you can begin this week."></textarea>
-            <div><small>{{ nextActionDraft.length }}/180</small><button class="accent" :disabled="savingNextAction || nextActionDraft.trim().length < 3" type="submit">{{ savingNextAction ? 'Saving…' : 'Protect this next move' }}</button></div>
+            <textarea id="next-action" v-model.trim="nextActionDraft" :readonly="activeProjectDetail?.access.canManage === false" maxlength="180" placeholder="Write one action you can begin this week."></textarea>
+            <div><small>{{ activeProjectDetail?.access.canManage === false ? 'Only the project owner can change the next move.' : `${nextActionDraft.length}/180` }}</small><button v-if="activeProjectDetail?.access.canManage !== false" class="accent" :disabled="savingNextAction || nextActionDraft.trim().length < 3" type="submit">{{ savingNextAction ? 'Saving…' : 'Protect this next move' }}</button></div>
           </form>
           <template v-if="activeProjectDetail">
             <section class="project-pulse" aria-label="Project pulse">
               <div><span>PROJECT PULSE</span><strong>{{ completedMilestoneCount }}/{{ activeProjectDetail.milestones.length }}</strong><small>milestones honoured</small></div>
               <div><span>VISIBLE WORK</span><strong>{{ activeProjectDetail.artifacts.length }}</strong><small>pieces of evidence</small></div>
+              <div><span>REFLECTIONS</span><strong>{{ activeProjectDetail.reviews.length }}</strong><small>project reviews kept</small></div>
               <div><span>PROJECT TRAIL</span><strong>{{ activeProjectDetail.activity.length }}</strong><small>meaningful moments</small></div>
+            </section>
+
+            <section v-if="activeProject.status === 'completed'" class="legacy-capsule">
+              <div><span>PROJECT LEGACY</span><h3>This work has a place in your story.</h3><p>It is complete for this season. Its decisions, evidence, and learning remain here without being turned into a score.</p></div>
+              <dl><div><dt>PATH HONOURED</dt><dd>{{ completedMilestoneCount }} milestones</dd></div><div><dt>WORK KEPT</dt><dd>{{ activeProjectDetail.artifacts.length }} pieces</dd></div><div><dt>LEARNING HELD</dt><dd>{{ activeProjectDetail.reviews.length }} reviews</dd></div></dl>
+              <button v-if="activeProjectDetail.access.canManage" class="legacy-return" type="button" :disabled="savingProjectStatus" @click="setProjectStatus('active')">Return this work to practice <span>↗</span></button>
             </section>
 
             <div class="project-workbench">
               <section class="project-station milestone-station">
                 <div class="station-heading"><span>THE PATH</span><h3>Milestones with a reason to exist.</h3><p>Make the path visible, then complete only the parts you actually carry out.</p></div>
-                <form class="inline-composer" @submit.prevent="addMilestone">
+                <form v-if="activeProjectDetail.access.canManage" class="inline-composer" @submit.prevent="addMilestone">
                   <input v-model.trim="milestoneDraft" maxlength="140" aria-label="New milestone" placeholder="Name the next meaningful milestone" />
                   <button type="submit" :disabled="savingMilestone || milestoneDraft.length < 3">{{ savingMilestone ? 'Adding…' : 'Add' }}</button>
                 </form>
                 <p v-if="activeProjectDetail.milestones.length === 0" class="honest-empty">No milestones yet. A clear next move is enough to begin.</p>
                 <ul v-else class="milestone-list">
                   <li v-for="milestone in activeProjectDetail.milestones" :key="milestone.id" :class="{ complete: milestone.status === 'completed' }">
-                    <button class="milestone-toggle" type="button" :aria-label="`${milestone.status === 'completed' ? 'Reopen' : 'Complete'} ${milestone.title}`" :disabled="savingMilestoneId === milestone.id" @click="toggleMilestone(milestone.id, milestone.status === 'planned')"><span>{{ milestone.status === 'completed' ? '✓' : '' }}</span></button>
+                    <button class="milestone-toggle" type="button" :aria-label="`${milestone.status === 'completed' ? 'Reopen' : 'Complete'} ${milestone.title}`" :disabled="!activeProjectDetail.access.canManage || savingMilestoneId === milestone.id" @click="toggleMilestone(milestone.id, milestone.status === 'planned')"><span>{{ milestone.status === 'completed' ? '✓' : '' }}</span></button>
                     <strong>{{ milestone.title }}</strong>
                     <small>{{ milestone.status === 'completed' ? 'Honoured' : 'Waiting for action' }}</small>
                   </li>
@@ -87,8 +96,44 @@
                 </form>
                 <p v-if="activeProjectDetail.artifacts.length === 0" class="honest-empty">Nothing recorded yet. The work has room to become visible when it is ready.</p>
                 <ul v-else class="artifact-list">
-                  <li v-for="artifact in activeProjectDetail.artifacts" :key="artifact.id"><span>{{ artifactKindLabel(artifact.kind) }}</span><strong>{{ artifact.title }}</strong><p v-if="artifact.note">{{ artifact.note }}</p><img v-if="artifactPreview(artifact.id)" class="artifact-preview" :src="artifactPreview(artifact.id) ?? undefined" :alt="`${artifact.title} preview`" /><small v-if="artifactPreview(artifact.id)">Private preview held on this device</small></li>
+                  <li v-for="artifact in activeProjectDetail.artifacts" :key="artifact.id"><span>{{ artifactKindLabel(artifact.kind) }}</span><strong>{{ artifact.title }}</strong><p v-if="artifact.note">{{ artifact.note }}</p><small v-if="artifact.contributorName">Added by {{ artifact.contributorName }}</small><img v-if="artifactPreview(artifact.id)" class="artifact-preview" :src="artifactPreview(artifact.id) ?? undefined" :alt="`${artifact.title} preview`" /><small v-if="artifactPreview(artifact.id)">Private preview held on this device</small></li>
                 </ul>
+              </section>
+
+              <section class="project-station review-station">
+                <div class="station-heading"><span>WEEKLY REVIEW</span><h3>What moved forward?</h3><p>Keep a short record while the work is still fresh. This is for learning, not performance.</p></div>
+                <form class="review-composer" @submit.prevent="recordReview">
+                  <label><span>WHAT MOVED?</span><textarea v-model.trim="reviewProudOf" maxlength="800" placeholder="Name the action, decision, or piece of work that mattered."></textarea></label>
+                  <label><span>WHAT DID IT TEACH YOU? <em>optional</em></span><textarea v-model.trim="reviewLearned" maxlength="500" placeholder="A useful insight, friction, or change of direction."></textarea></label>
+                  <label><span>WHAT WILL YOU PROTECT NEXT? <em>optional</em></span><input v-model.trim="reviewNextFocus" maxlength="180" placeholder="One thing worth carrying into the next week" /></label>
+                  <div class="review-actions"><small>{{ reviewProudOf.length }}/800</small><button class="secondary-action" type="submit" :disabled="savingReview || reviewProudOf.length < 3">{{ savingReview ? 'Keeping…' : 'Keep this review' }} <span>↗</span></button></div>
+                </form>
+                <p v-if="activeProjectDetail.reviews.length === 0" class="honest-empty">No review yet. Let the project live for a moment, then name what honestly moved.</p>
+                <ol v-else class="review-list"><li v-for="review in activeProjectDetail.reviews" :key="review.id"><time :datetime="review.createdAt">{{ formatActivityTime(review.createdAt) }}</time><strong>{{ review.proudOf }}</strong><p v-if="review.learned"><b>Learned</b>{{ review.learned }}</p><p v-if="review.nextFocus"><b>Next</b>{{ review.nextFocus }}</p></li></ol>
+              </section>
+
+              <section class="project-station contribution-station">
+                <div class="station-heading"><span>MAKE A CONTRIBUTION</span><h3>Leave a trace with your name on it.</h3><p>Ideas, research, design, code, care, or practical work all count when they move the project forward.</p></div>
+                <form v-if="activeProject.status !== 'completed'" class="contribution-composer" @submit.prevent="recordContribution">
+                  <label><span>YOUR CONTRIBUTION</span><select v-model="contributionType" aria-label="Contribution type"><option value="idea">Idea</option><option value="research">Research</option><option value="design">Design</option><option value="code">Code</option><option value="funding">Funding</option><option value="mentorship">Mentorship</option><option value="operations">Operations</option><option value="other">Other work</option></select></label>
+                  <label><span>WHAT DID YOU MOVE?</span><textarea v-model.trim="contributionDescription" maxlength="1000" placeholder="Describe the real action, decision, or work you brought to this project."></textarea></label>
+                  <label><span>EVIDENCE LINK <em>optional</em></span><input v-model.trim="contributionEvidenceUrl" type="url" maxlength="500" placeholder="https://…" /></label>
+                  <div class="contribution-actions"><small>{{ contributionDescription.length }}/1000</small><button class="secondary-action" type="submit" :disabled="savingContribution || contributionDescription.length < 3">{{ savingContribution ? 'Recording…' : 'Record contribution' }} <span>↗</span></button></div>
+                </form>
+                <p v-else class="honest-empty">This project is complete for this season. Its contribution trail is preserved in its legacy.</p>
+                <p v-if="activeProjectDetail.contributions.length === 0" class="honest-empty">No contribution has been recorded yet. The next one can be small and still matter.</p>
+                <ol v-else class="contribution-list"><li v-for="contribution in activeProjectDetail.contributions" :key="contribution.id"><div><span>{{ contributionTypeLabel(contribution.type) }}</span><time :datetime="contribution.createdAt">{{ formatActivityTime(contribution.createdAt) }}</time></div><strong>{{ contribution.contributorName }}</strong><p>{{ contribution.description }}</p><a v-if="contribution.evidenceUrl" :href="contribution.evidenceUrl" target="_blank" rel="noopener noreferrer">Open evidence ↗</a></li></ol>
+              </section>
+
+              <section class="project-station circle-station">
+                <div class="station-heading"><span>PROJECT CIRCLE</span><h3>Build with people, not an audience.</h3><p>Only people you choose can enter this project. Contributors and mentors can add their own trace without taking control of the work.</p></div>
+                <ul class="collaborator-list"><li v-for="collaborator in activeProjectDetail.collaborators" :key="collaborator.userId"><i>{{ collaboratorInitials(collaborator.displayName) }}</i><div><strong>{{ collaborator.displayName }}</strong><small>{{ collaboratorRoleLabel(collaborator.role) }}</small></div><em>{{ collaborator.role === 'owner' ? '◈' : collaborator.role === 'mentor' ? '✦' : '↗' }}</em></li></ul>
+                <form v-if="activeProjectDetail.access.canManage" class="invite-composer" @submit.prevent="inviteCollaborator">
+                  <label><span>INVITE A REGISTERED TOP MEMBER</span><input v-model.trim="inviteEmail" type="email" maxlength="254" autocomplete="email" placeholder="their@email.com" /></label>
+                  <label><span>ROLE</span><select v-model="inviteRole"><option value="contributor">Contributor</option><option value="mentor">Mentor</option></select></label>
+                  <button class="secondary-action" type="submit" :disabled="savingInvite || !isInviteEmailValid">{{ savingInvite ? 'Inviting…' : 'Invite to circle' }} <span>↗</span></button>
+                </form>
+                <p v-else class="honest-empty">You are here as a {{ collaboratorRoleLabel(activeProjectDetail.access.role).toLowerCase() }}. Contribute below; the project owner protects the mission and structure.</p>
               </section>
             </div>
 
@@ -125,11 +170,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 
-import { getFocusSuggestion, saveWorkspaceReflection, type FocusSuggestion, type ProjectArtifactKind, type ProjectDirection, type ProjectStatus } from "../../lib/api";
+import { getFocusSuggestion, saveWorkspaceReflection, type FocusSuggestion, type ProjectArtifactKind, type ProjectContributionType, type ProjectDirection, type ProjectMemberRole, type ProjectStatus } from "../../lib/api";
 import { getLocalArtifactPreview } from "../../lib/artifactVault";
 import Atelier from "./Atelier.vue";
 import BlueprintBuilder from "./BlueprintBuilder.vue";
 import CraftStudio from "./CraftStudio.vue";
+import SeedGarden from "./SeedGarden.vue";
 import { workspaceEngine } from "./WorkspaceEngine";
 import { WorkspaceState } from "./WorkspaceState";
 
@@ -148,9 +194,21 @@ const artifactTitle = ref("");
 const artifactKind = ref<ProjectArtifactKind>("note");
 const artifactNote = ref("");
 const savingArtifact = ref(false);
-const isNativeSection = computed(() => ["Atelier", "Studio", "Blueprint"].includes(WorkspaceState.activeSection));
+const reviewProudOf = ref("");
+const reviewLearned = ref("");
+const reviewNextFocus = ref("");
+const savingReview = ref(false);
+const contributionType = ref<ProjectContributionType>("idea");
+const contributionDescription = ref("");
+const contributionEvidenceUrl = ref("");
+const savingContribution = ref(false);
+const inviteEmail = ref("");
+const inviteRole = ref<"contributor" | "mentor">("contributor");
+const savingInvite = ref(false);
+const isNativeSection = computed(() => ["Seeds", "Atelier", "Studio", "Blueprint"].includes(WorkspaceState.activeSection));
 
 const copy = {
+  Seeds: ["SEED GARDEN", "Let an idea earn its next form.", "Seeds protect the early shape of an idea until it is ready to become a real commitment."],
   Projects: ["LIFE PROJECTS", "Build a life with visible evidence.", "Projects are not posts. They are commitments you can return to, improve, and share."],
   Project: ["PROJECT SPACE", "Make the work tangible.", "Keep one next action clear enough to carry into your real life."],
   Atelier: ["TOP ATELIER", "Build what does not exist yet.", "Choose a medium, make a first version, and let the work become clearer through your hands."],
@@ -166,6 +224,7 @@ const activeProjectDetail = computed(() => {
   return projectId ? WorkspaceState.projectDetails[projectId] ?? null : null;
 });
 const completedMilestoneCount = computed(() => activeProjectDetail.value?.milestones.filter((milestone) => milestone.status === "completed").length ?? 0);
+const isInviteEmailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.value));
 const activeCopy = computed(() => copy[WorkspaceState.activeSection as keyof typeof copy] ?? copy.Projects);
 const eyebrow = computed(() => activeProject.value ? `PROJECT / ${directionLabel(activeProject.value.direction)}` : activeCopy.value[0]);
 const heading = computed(() => activeProject.value?.title ?? activeCopy.value[1]);
@@ -186,6 +245,9 @@ function directionLabel(direction: ProjectDirection): string { return { personal
 function statusLabel(status: ProjectStatus): string { return { planning: "Beginning", active: "In practice", paused: "Paused", completed: "Complete" }[status]; }
 function stateCopy(status: ProjectStatus): string { return { planning: "This is still becoming a commitment. Give it one honest next move.", active: "This project is in motion. Protect the action that keeps it real.", paused: "This project is resting deliberately—not disappearing into a forgotten list.", completed: "The work is complete for this season. Its evidence and learning stay with you." }[status]; }
 function artifactKindLabel(kind: ProjectArtifactKind): string { return { atelier: "Atelier", canvas: "Canvas", blueprint: "Blueprint", note: "Note", link: "Link", other: "Work" }[kind]; }
+function contributionTypeLabel(type: ProjectContributionType): string { return { idea: "Idea", research: "Research", design: "Design", code: "Code", funding: "Funding", mentorship: "Mentorship", operations: "Operations", other: "Work" }[type]; }
+function collaboratorRoleLabel(role: ProjectMemberRole): string { return { owner: "Project owner", contributor: "Contributor", mentor: "Mentor" }[role]; }
+function collaboratorInitials(name: string): string { return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "T"; }
 function artifactPreview(artifactId: string): string | null { return getLocalArtifactPreview(artifactId); }
 function formatActivityTime(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? "Now" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date); }
 
@@ -196,6 +258,9 @@ async function setProjectStatus(status: ProjectStatus): Promise<void> { if (!act
 async function addMilestone(): Promise<void> { if (!activeProject.value || milestoneDraft.value.length < 3) return; savingMilestone.value = true; try { await workspaceEngine.addProjectMilestone(activeProject.value.id, milestoneDraft.value); milestoneDraft.value = ""; } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That milestone could not be added."); } finally { savingMilestone.value = false; } }
 async function toggleMilestone(milestoneId: string, complete: boolean): Promise<void> { if (!activeProject.value) return; savingMilestoneId.value = milestoneId; try { await workspaceEngine.setProjectMilestone(activeProject.value.id, milestoneId, complete); } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That milestone could not be updated."); } finally { savingMilestoneId.value = ""; } }
 async function recordArtifact(): Promise<void> { if (!activeProject.value || artifactTitle.value.length < 3) return; savingArtifact.value = true; try { await workspaceEngine.recordProjectArtifact(activeProject.value.id, { title: artifactTitle.value, kind: artifactKind.value, ...(artifactNote.value ? { note: artifactNote.value } : {}) }); artifactTitle.value = ""; artifactNote.value = ""; artifactKind.value = "note"; } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That evidence could not be recorded."); } finally { savingArtifact.value = false; } }
+async function recordReview(): Promise<void> { if (!activeProject.value || reviewProudOf.value.length < 3) return; savingReview.value = true; try { await workspaceEngine.recordProjectReview(activeProject.value.id, { proudOf: reviewProudOf.value, ...(reviewLearned.value ? { learned: reviewLearned.value } : {}), ...(reviewNextFocus.value ? { nextFocus: reviewNextFocus.value } : {}) }); reviewProudOf.value = ""; reviewLearned.value = ""; reviewNextFocus.value = ""; } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That project review could not be kept."); } finally { savingReview.value = false; } }
+async function inviteCollaborator(): Promise<void> { if (!activeProject.value || !isInviteEmailValid.value) return; savingInvite.value = true; try { await workspaceEngine.inviteCollaborator(activeProject.value.id, { email: inviteEmail.value, role: inviteRole.value }); inviteEmail.value = ""; } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That invitation could not be completed."); } finally { savingInvite.value = false; } }
+async function recordContribution(): Promise<void> { if (!activeProject.value || contributionDescription.value.length < 3) return; savingContribution.value = true; try { await workspaceEngine.recordProjectContribution(activeProject.value.id, { type: contributionType.value, description: contributionDescription.value, ...(contributionEvidenceUrl.value ? { evidenceUrl: contributionEvidenceUrl.value } : {}) }); contributionDescription.value = ""; contributionEvidenceUrl.value = ""; contributionType.value = "idea"; } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That contribution could not be recorded."); } finally { savingContribution.value = false; } }
 async function submitReflection(): Promise<void> { reflectionMessage.value = ""; try { reflectionSaving.value = true; const result = await saveWorkspaceReflection(reflection.value); reflectionMessage.value = result.message; reflection.value = ""; workspaceEngine.notify("Reflection kept in your practice."); } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "Your reflection could not be saved."); } finally { reflectionSaving.value = false; } }
 </script>
 
@@ -206,4 +271,6 @@ async function submitReflection(): Promise<void> { reflectionMessage.value = "";
 .project-state { align-items:flex-end; background:rgba(3,5,17,.42); border:1px solid rgba(122,154,255,.18); border-radius:16px 16px 5px 16px; display:flex; gap:25px; justify-content:space-between; margin-top:27px; padding:17px; }.project-state span { color:var(--top-cyan); display:block; font-family:var(--top-mono); font-size:8px; font-weight:800; letter-spacing:.14em; }.project-state p { color:var(--top-muted); font-size:11px; line-height:1.55; margin-top:7px; max-width:490px; }.state-actions { display:flex; flex:0 0 auto; flex-wrap:wrap; gap:7px; justify-content:flex-end; }.state-actions button { background:rgba(113,133,255,.08); border:1px solid rgba(122,154,255,.22); border-radius:999px; color:var(--top-muted); cursor:pointer; font-family:var(--top-mono); font-size:8px; padding:9px 11px; transition:.2s ease; }.state-actions button:hover:not(:disabled),.state-actions button.selected { border-color:var(--top-cyan); color:var(--top-ink); }.state-actions button.selected { background:rgba(98,230,255,.13); }.state-actions button:disabled:not(.selected) { cursor:wait; opacity:.55; }
 @media (max-width:800px) { .project-state { align-items:flex-start; flex-direction:column; gap:12px; }.state-actions { justify-content:flex-start; } }
 .artifact-preview { border:1px solid rgba(98,230,255,.3); border-radius:10px 10px 3px 10px; display:block; margin-top:11px; max-height:190px; object-fit:cover; width:100%; }.artifact-list li > small { color:rgba(190,205,244,.5); display:block; font-family:var(--top-mono); font-size:7px; letter-spacing:.06em; margin-top:8px; }
+.project-compass { display:grid; gap:1px; grid-template-columns:1fr 1.45fr 1fr; margin:25px 0 0; overflow:hidden; border:1px solid rgba(122,154,255,.18); border-radius:16px 16px 5px 16px; }.project-compass > div { background:rgba(3,5,17,.34); min-height:93px; padding:14px; }.project-compass > div + div { border-left:1px solid rgba(122,154,255,.18); }.project-compass dt { color:var(--top-cyan); font-family:var(--top-mono); font-size:7px; font-weight:800; letter-spacing:.11em; }.project-compass dd { color:rgba(235,241,255,.9); display:block; font-size:11px; line-height:1.55; margin:9px 0 0; }.project-compass > div:first-child dd { color:var(--top-ink); font-family:var(--top-display); font-size:18px; font-weight:700; letter-spacing:-.05em; line-height:1; }.legacy-capsule { background:radial-gradient(circle at 92% 8%,rgba(217,255,113,.15),transparent 30%),linear-gradient(135deg,rgba(24,43,46,.76),rgba(8,14,27,.94)); border:1px solid rgba(156,236,153,.32); border-radius:23px 23px 8px 23px; display:grid; gap:22px; grid-column:span 3; margin-top:17px; overflow:hidden; padding:clamp(25px,4vw,40px); position:relative; }.legacy-capsule > div > span,.review-composer label > span { color:var(--top-lime); display:block; font-family:var(--top-mono); font-size:8px; font-weight:800; letter-spacing:.15em; text-transform:uppercase; }.legacy-capsule h3 { font-family:var(--top-display); font-size:clamp(30px,4vw,46px); font-weight:700; letter-spacing:-.07em; line-height:.92; margin:13px 0; }.legacy-capsule p { color:var(--top-muted); font-size:12px; line-height:1.65; max-width:680px; }.legacy-capsule dl { display:grid; gap:1px; grid-template-columns:repeat(3,minmax(0,1fr)); margin:0; overflow:hidden; border:1px solid rgba(156,236,153,.2); border-radius:15px 15px 4px 15px; }.legacy-capsule dl > div { background:rgba(3,12,17,.36); min-height:76px; padding:13px; }.legacy-capsule dl > div + div { border-left:1px solid rgba(156,236,153,.2); }.legacy-capsule dt { color:var(--top-lime); font-family:var(--top-mono); font-size:7px; font-weight:800; letter-spacing:.1em; }.legacy-capsule dd { color:var(--top-ink); font-size:12px; margin:8px 0 0; }.legacy-return { align-items:center; align-self:start; background:rgba(156,236,153,.1); border:1px solid rgba(156,236,153,.64); border-radius:999px; color:var(--top-lime); cursor:pointer; display:flex; font-family:var(--top-mono); font-size:9px; font-weight:800; gap:9px; padding:11px 13px; transition:.2s ease; }.legacy-return:hover:not(:disabled) { background:rgba(156,236,153,.18); transform:translateY(-2px); }.legacy-return:disabled { cursor:wait; opacity:.55; }.legacy-return span { font-size:13px; }.review-station { grid-column:span 2; }.review-composer { display:grid; gap:12px; margin-top:22px; }.review-composer label { display:grid; gap:7px; }.review-composer label em { color:var(--top-muted); font-style:normal; font-weight:400; letter-spacing:0; text-transform:none; }.review-composer textarea,.review-composer input { background:rgba(3,5,17,.67); border:1px solid rgba(122,154,255,.28); border-radius:12px 12px 4px 12px; box-sizing:border-box; color:var(--top-ink); font:inherit; outline:0; padding:11px 12px; width:100%; }.review-composer textarea { min-height:78px; resize:vertical; }.review-composer textarea:focus,.review-composer input:focus { border-color:var(--top-cyan); box-shadow:0 0 0 3px rgba(98,230,255,.1); }.review-actions { align-items:center; display:flex; justify-content:space-between; }.review-actions small { color:var(--top-muted); font-family:var(--top-mono); font-size:8px; }.review-list { display:grid; gap:9px; list-style:none; margin:22px 0 0; padding:0; }.review-list li { background:rgba(2,5,17,.34); border-left:1px solid var(--top-lime); padding:12px; }.review-list time { color:var(--top-muted); display:block; font-family:var(--top-mono); font-size:8px; }.review-list strong { color:var(--top-ink); display:block; font-size:12px; line-height:1.5; margin-top:7px; }.review-list p { color:var(--top-muted); font-size:11px; line-height:1.55; margin:7px 0 0; }.review-list b { color:var(--top-cyan); font-family:var(--top-mono); font-size:8px; letter-spacing:.08em; margin-right:8px; text-transform:uppercase; }.circle-station { background:radial-gradient(circle at 85% 12%,rgba(156,124,255,.17),transparent 28%),linear-gradient(145deg,rgba(17,25,62,.76),rgba(5,8,24,.7)); }.circle-empty { align-items:flex-start; background:rgba(3,5,17,.34); border:1px dashed rgba(156,124,255,.38); border-radius:14px 14px 4px 14px; display:flex; gap:12px; margin-top:24px; padding:15px; }.circle-empty > i { align-items:center; border:1px solid rgba(156,124,255,.75); border-radius:50%; color:var(--top-violet); display:flex; flex:0 0 auto; font-style:normal; height:29px; justify-content:center; width:29px; }.circle-empty strong { color:var(--top-ink); font-size:11px; }.circle-empty p { color:var(--top-muted); font-size:10px; line-height:1.55; margin-top:5px; }.activity-list .activity-review-recorded { background:var(--top-pink); box-shadow:0 0 12px rgba(255,129,192,.65); } @media (max-width:800px) { .project-compass { grid-template-columns:1fr; }.project-compass > div + div { border-left:0; border-top:1px solid rgba(122,154,255,.18); }.legacy-capsule,.review-station { grid-column:span 1; }.legacy-capsule dl { grid-template-columns:1fr; }.legacy-capsule dl > div + div { border-left:0; border-top:1px solid rgba(156,236,153,.2); } }
+.contribution-station { grid-column:span 2; background:radial-gradient(circle at 83% 9%,rgba(255,114,189,.13),transparent 30%),linear-gradient(145deg,rgba(42,20,61,.72),rgba(6,8,24,.88)); }.contribution-composer,.invite-composer { display:grid; gap:11px; margin-top:23px; }.contribution-composer label,.invite-composer label { display:grid; gap:7px; }.contribution-composer label > span,.invite-composer label > span { color:var(--top-pink); font-family:var(--top-mono); font-size:8px; font-weight:800; letter-spacing:.13em; }.invite-composer label > span { color:var(--top-violet); }.contribution-composer em { color:var(--top-muted); font-style:normal; font-weight:400; letter-spacing:0; text-transform:none; }.contribution-composer select,.contribution-composer textarea,.contribution-composer input,.invite-composer select,.invite-composer input { background:rgba(3,5,17,.67); border:1px solid rgba(122,154,255,.28); border-radius:12px 12px 4px 12px; box-sizing:border-box; color:var(--top-ink); font:inherit; outline:0; padding:11px 12px; width:100%; }.contribution-composer textarea { min-height:92px; resize:vertical; }.contribution-composer select:focus,.contribution-composer textarea:focus,.contribution-composer input:focus,.invite-composer select:focus,.invite-composer input:focus { border-color:var(--top-pink); box-shadow:0 0 0 3px rgba(255,114,189,.1); }.invite-composer select:focus,.invite-composer input:focus { border-color:var(--top-violet); box-shadow:0 0 0 3px rgba(156,124,255,.1); }.contribution-actions { align-items:center; display:flex; justify-content:space-between; }.contribution-actions small { color:var(--top-muted); font-family:var(--top-mono); font-size:8px; }.contribution-list,.collaborator-list { display:grid; gap:9px; list-style:none; margin:22px 0 0; padding:0; }.contribution-list li { background:rgba(3,5,17,.38); border-left:1px solid var(--top-pink); padding:12px; }.contribution-list li > div { align-items:center; display:flex; justify-content:space-between; }.contribution-list span { color:var(--top-pink); font-family:var(--top-mono); font-size:8px; letter-spacing:.12em; text-transform:uppercase; }.contribution-list time { color:var(--top-muted); font-family:var(--top-mono); font-size:8px; }.contribution-list strong { color:var(--top-ink); display:block; font-size:11px; margin-top:8px; }.contribution-list p { color:var(--top-muted); font-size:11px; line-height:1.6; margin-top:5px; }.contribution-list a { color:var(--top-cyan); display:inline-block; font-family:var(--top-mono); font-size:8px; margin-top:9px; text-decoration:none; }.circle-station { background:radial-gradient(circle at 85% 12%,rgba(156,124,255,.17),transparent 28%),linear-gradient(145deg,rgba(17,25,62,.76),rgba(5,8,24,.7)); }.collaborator-list li { align-items:center; background:rgba(3,5,17,.34); border:1px solid rgba(156,124,255,.16); border-radius:13px 13px 4px 13px; display:grid; gap:10px; grid-template-columns:31px minmax(0,1fr) auto; padding:10px; }.collaborator-list i { align-items:center; background:linear-gradient(135deg,rgba(98,230,255,.3),rgba(156,124,255,.25)); border:1px solid rgba(156,124,255,.55); border-radius:10px 10px 3px 10px; color:var(--top-ink); display:flex; font-family:var(--top-mono); font-size:8px; font-style:normal; font-weight:800; height:29px; justify-content:center; }.collaborator-list strong,.collaborator-list small { display:block; }.collaborator-list strong { color:var(--top-ink); font-size:11px; }.collaborator-list small { color:var(--top-muted); font-family:var(--top-mono); font-size:8px; margin-top:4px; }.collaborator-list em { color:var(--top-violet); font-size:13px; font-style:normal; }.invite-composer { border-top:1px solid rgba(156,124,255,.18); margin-top:18px; padding-top:18px; }.activity-list .activity-review-recorded,.activity-list .activity-contribution-recorded { background:var(--top-pink); box-shadow:0 0 12px rgba(255,129,192,.65); }.activity-list .activity-circle-updated { background:var(--top-violet); box-shadow:0 0 12px rgba(156,124,255,.65); } @media (max-width:800px) { .contribution-station { grid-column:span 1; }.contribution-actions { align-items:flex-start; flex-direction:column; gap:10px; } }
 </style>

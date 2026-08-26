@@ -28,6 +28,10 @@ npm run dev
 
 The API is available at `http://127.0.0.1:3000/health`. The frontend reads `VITE_API_URL` from `frontend/.env` and defaults to that local address.
 
+## Deploy TOP
+
+TOP is prepared for a production split with Netlify hosting the frontend, Render hosting the API, Supabase providing PostgreSQL, and Spaceship managing `t0p.world`. Follow the complete guide in [docs/deployment-netlify-render-supabase.md](docs/deployment-netlify-render-supabase.md).
+
 ## Product direction
 
 TOP is not optimized for scrolling, watch time, or popularity. It is organized around a practical loop:

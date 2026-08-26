@@ -8,6 +8,7 @@ export type SeedStatus = "draft" | "planted" | "growing" | "archived";
 
 export interface SeedRecord {
   id: string;
+  sourcePublicPostId: string | null;
   title: string;
   problem: string;
   desiredOutcome: string;
@@ -64,7 +65,7 @@ class MemorySeedRepository implements SeedRepository {
 
   public async create(userId: string, input: SeedInput): Promise<SeedRecord> {
     const now = new Date().toISOString();
-    const seed: MemorySeed = { id: crypto.randomUUID(), ...input, status: "planted", createdAt: now, updatedAt: now, entryCount: 0, projectId: null, entries: [] };
+    const seed: MemorySeed = { id: crypto.randomUUID(), sourcePublicPostId: null, ...input, status: "planted", createdAt: now, updatedAt: now, entryCount: 0, projectId: null, entries: [] };
     this.garden(userId).unshift(seed);
     return toRecord(seed, seed.entryCount, seed.projectId);
   }
@@ -168,8 +169,8 @@ class PostgreSqlSeedRepository implements SeedRepository {
   }
 }
 
-function toRecord(seed: { id: string; title: string; problem: string; desiredOutcome: string; status: string; createdAt: Date | string; updatedAt: Date | string }, entryCount = 0, projectId: string | null = null): SeedRecord {
-  return { id: seed.id, title: seed.title, problem: seed.problem, desiredOutcome: seed.desiredOutcome, status: seed.status as SeedStatus, createdAt: iso(seed.createdAt), updatedAt: iso(seed.updatedAt), entryCount, projectId };
+function toRecord(seed: { id: string; sourcePublicPostId?: string | null; title: string; problem: string; desiredOutcome: string; status: string; createdAt: Date | string; updatedAt: Date | string }, entryCount = 0, projectId: string | null = null): SeedRecord {
+  return { id: seed.id, sourcePublicPostId: seed.sourcePublicPostId ?? null, title: seed.title, problem: seed.problem, desiredOutcome: seed.desiredOutcome, status: seed.status as SeedStatus, createdAt: iso(seed.createdAt), updatedAt: iso(seed.updatedAt), entryCount, projectId };
 }
 
 function toEntry(entry: { id: string; seedId: string; body: string; createdAt: Date | string }): SeedEntry {

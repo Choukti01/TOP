@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, or } from "drizzle-orm";
 
 import type { AppConfig } from "../config/env.js";
 import { createDatabase } from "../db/client.js";
@@ -337,7 +337,7 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
   }
 
   public async getNotifications(userId: string): Promise<TopNotification[]> {
-    const rows = await this.database.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt)).limit(40);
+    const rows = await this.database.select().from(notifications).where(and(eq(notifications.userId, userId), ne(notifications.type, "direct-message"))).orderBy(desc(notifications.createdAt)).limit(40);
     return rows.map((notification) => ({ id: notification.id, type: notification.type, title: notification.title, detail: notification.detail, href: notification.href, readAt: notification.readAt ? iso(notification.readAt) : null, createdAt: iso(notification.createdAt) }));
   }
 

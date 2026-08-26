@@ -20,7 +20,7 @@
         </button>
         <button class="choice" type="button" @click="continueJourney">
           <span class="choice-symbol">02</span>
-          <span><small>CONTINUE THE PRACTICE</small><strong>Open my workspace</strong><i>Return to projects, questions, and momentum.</i></span>
+          <span><small>CONTINUE THE PRACTICE</small><strong>Open my private Field</strong><i>Return to projects, questions, and momentum.</i></span>
           <b aria-hidden="true">↗</b>
         </button>
       </div>
@@ -46,7 +46,7 @@ function startJourney(): void {
 }
 
 function continueJourney(): void {
-  router.push("/workspace");
+  router.push("/field");
 }
 
 function returnToWelcome(): void {

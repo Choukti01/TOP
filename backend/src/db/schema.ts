@@ -117,6 +117,7 @@ export const seeds = pgTable("seeds", {
   creatorId: uuid("creator_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  sourcePublicPostId: uuid("source_public_post_id"),
   title: text("title").notNull(),
   problem: text("problem").notNull(),
   desiredOutcome: text("desired_outcome").notNull(),
@@ -137,6 +138,7 @@ export const seedNotes = pgTable("seed_notes", {
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
   seedId: uuid("seed_id").references(() => seeds.id, { onDelete: "set null" }),
+  sourcePublicPostId: uuid("source_public_post_id"),
   ownerId: uuid("owner_id")
     .notNull()
     .references(() => users.id, { onDelete: "restrict" }),
@@ -260,9 +262,29 @@ export const publicPosts = pgTable("public_posts", {
   kind: text("kind").notNull(),
   title: text("title").notNull(),
   body: text("body").notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const publicPostOffers = pgTable(
+  "public_post_offers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => publicPosts.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    note: text("note").notNull(),
+    status: text("status").default("pending").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [uniqueIndex("public_post_offers_post_user_unique").on(table.postId, table.userId), index("public_post_offers_post_status_idx").on(table.postId, table.status)]
+);
 
 export const postReactions = pgTable(
   "post_reactions",

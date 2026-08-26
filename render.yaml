@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: top-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_ENABLED
+        value: "true"
+      - key: WEB_ORIGIN
+        value: https://www.t0p.world
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true

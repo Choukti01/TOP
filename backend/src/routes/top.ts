@@ -18,6 +18,10 @@ const commentInput = z.object({ body: z.string().trim().min(1).max(1_000) }).str
 const responseInput = z.object({ response: z.enum(["accepted", "declined"]) }).strict();
 const searchInput = z.string().trim().min(2).max(80);
 const directMessageInput = z.object({ body: z.string().trim().min(1).max(2_000) }).strict();
+const projectDirection = z.enum(["personal", "creative", "learning", "community", "venture", "other"]);
+const projectCircleInput = z.object({ direction: projectDirection, nextAction: z.string().trim().min(3).max(180), firstMilestone: z.string().trim().min(3).max(160) }).strict();
+const signalOfferInput = z.object({ kind: z.enum(["help", "skill", "collaboration"]), note: z.string().trim().min(3).max(600) }).strict();
+const signalOfferResponseInput = z.object({ response: z.enum(["accepted", "declined"]), role: z.enum(["contributor", "mentor"]).default("contributor") }).strict();
 
 export function createTopRouter(auth: AuthService, config: Pick<AppConfig, "databaseUrl" | "databaseEnabled">): Router {
   const router = Router();
@@ -51,6 +55,12 @@ export function createTopRouter(auth: AuthService, config: Pick<AppConfig, "data
     return response.status(201).json({ post: await publicTop.createPost(currentUser(response).id, parsed.data) });
   });
 
+  router.get("/posts/:postId", async (request, response) => {
+    const post = await publicTop.getPost(currentUser(response).id, request.params.postId);
+    if (!post) return response.status(404).json({ error: "That shared signal is no longer available." });
+    return response.status(200).json({ post });
+  });
+
   router.post("/posts/:postId/reactions", async (request, response) => {
     const parsed = reactionInput.safeParse(request.body);
     if (!parsed.success) return response.status(422).json({ error: "Choose a meaningful response to this signal." });
@@ -65,6 +75,28 @@ export function createTopRouter(auth: AuthService, config: Pick<AppConfig, "data
     const comment = await publicTop.addComment(currentUser(response).id, request.params.postId, parsed.data.body);
     if (!comment) return response.status(404).json({ error: "That shared signal is no longer available." });
     return response.status(201).json({ comment });
+  });
+
+  router.post("/posts/:postId/seed", async (request, response) => {
+    const result = await publicTop.createSeedFromPost(currentUser(response).id, request.params.postId);
+    if (!result) return response.status(404).json({ error: "That public signal is no longer available." });
+    return response.status(201).json(result);
+  });
+
+  router.post("/posts/:postId/project-circle", async (request, response) => {
+    const parsed = projectCircleInput.safeParse(request.body);
+    if (!parsed.success) return response.status(422).json({ error: "Name one next action and one first milestone before opening a project circle." });
+    const result = await publicTop.startProjectCircle(currentUser(response).id, request.params.postId, parsed.data);
+    if (!result) return response.status(403).json({ error: "Only the person who shared this signal can open its project circle." });
+    return response.status(201).json(result);
+  });
+
+  router.post("/posts/:postId/offers", async (request, response) => {
+    const parsed = signalOfferInput.safeParse(request.body);
+    if (!parsed.success) return response.status(422).json({ error: "Choose how you can help and leave a useful note." });
+    const post = await publicTop.createSignalOffer(currentUser(response).id, request.params.postId, parsed.data);
+    if (!post) return response.status(403).json({ error: "You can offer help to another person's signal, not your own." });
+    return response.status(201).json({ post });
   });
 
   router.get("/people/:personId", async (request, response) => {
@@ -89,6 +121,19 @@ export function createTopRouter(auth: AuthService, config: Pick<AppConfig, "data
     const changed = await publicTop.respondToConnectionRequest(currentUser(response).id, request.params.requestId, parsed.data.response);
     if (!changed) return response.status(404).json({ error: "That connection invitation is no longer available." });
     return response.status(200).json({ message: parsed.data.response === "accepted" ? "Connection accepted. Keep it human." : "Connection declined. Your field remains yours." });
+  });
+
+  router.get("/signal-offers", async (_request, response) => {
+    response.status(200).json({ offers: await publicTop.getIncomingSignalOffers(currentUser(response).id) });
+  });
+
+  router.post("/signal-offers/:offerId/respond", async (request, response) => {
+    const parsed = signalOfferResponseInput.safeParse(request.body);
+    if (!parsed.success) return response.status(422).json({ error: "Choose whether this offer belongs in your project circle." });
+    const result = await publicTop.respondToSignalOffer(currentUser(response).id, request.params.offerId, parsed.data.response, parsed.data.role);
+    if (!result) return response.status(404).json({ error: "That offer is no longer waiting for your decision." });
+    if (parsed.data.response === "accepted" && !result.projectId) return response.status(409).json({ error: "Open a project circle for this signal before welcoming someone into it." });
+    return response.status(200).json({ message: parsed.data.response === "accepted" ? "Offer welcomed into your project circle." : "Offer closed. Your Field remains intentional.", projectId: result.projectId });
   });
 
   router.get("/messages", async (_request, response) => {

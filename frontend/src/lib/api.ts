@@ -22,6 +22,8 @@ export interface AuthUser {
 
 export type PublicPostKind = "idea" | "signal" | "offer" | "question" | "negotiation" | "request" | "resource" | "milestone" | "event" | "collaboration";
 export type PublicReaction = "spark" | "build" | "help" | "question" | "respect";
+export type SignalOfferKind = "help" | "skill" | "collaboration";
+export type SignalOfferStatus = "pending" | "accepted" | "declined";
 
 export interface PublicPersonSummary {
   id: string;
@@ -40,6 +42,11 @@ export interface PublicComment {
   author: PublicPersonSummary;
 }
 
+export interface PublicReactionPerson {
+  reaction: PublicReaction;
+  person: PublicPersonSummary;
+}
+
 export interface PublicPost {
   id: string;
   kind: PublicPostKind;
@@ -48,15 +55,18 @@ export interface PublicPost {
   createdAt: string;
   author: PublicPersonSummary;
   reactions: Record<PublicReaction, number>;
+  reactionPeople: PublicReactionPerson[];
   viewerReaction: PublicReaction | null;
   comments: PublicComment[];
   commentCount: number;
+  bridge: { seedId: string | null; projectId: string | null; circleOpen: boolean; offerStatus: SignalOfferStatus | null; offerKind: SignalOfferKind | null; pendingOfferCount: number; };
 }
 
 export interface PublicProfile extends PublicPersonSummary {
   biography: string | null;
   stats: { projectCount: number; completedMilestoneCount: number; evidenceCount: number; connectionCount: number };
   connectionStatus: "self" | "none" | "pending-sent" | "pending-received" | "connected";
+  sharedPosts: PublicPost[];
 }
 
 export interface PublicSearchPerson extends PublicPersonSummary {
@@ -88,6 +98,17 @@ export interface DirectConversation {
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
+}
+
+export interface SignalOffer {
+  id: string;
+  postId: string;
+  postTitle: string;
+  projectId: string | null;
+  kind: SignalOfferKind;
+  note: string;
+  createdAt: string;
+  sender: PublicPersonSummary;
 }
 
 export type ProjectDirection = "personal" | "creative" | "learning" | "community" | "venture" | "other";
@@ -234,6 +255,7 @@ export interface WorkspaceProjectDetail {
 
 export interface TopSeed {
   id: string;
+  sourcePublicPostId: string | null;
   title: string;
   problem: string;
   desiredOutcome: string;
@@ -377,12 +399,36 @@ export function createPublicPost(input: { kind: PublicPostKind; title: string; b
   return request<{ post: PublicPost }>("/api/v1/top/posts", { method: "POST", body: input });
 }
 
+export function getPublicPost(postId: string): Promise<{ post: PublicPost }> {
+  return request<{ post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}`);
+}
+
 export function reactToPublicPost(postId: string, reaction: PublicReaction): Promise<{ post: PublicPost }> {
   return request<{ post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/reactions`, { method: "POST", body: { reaction } });
 }
 
 export function addPublicComment(postId: string, body: string): Promise<{ comment: PublicComment }> {
   return request<{ comment: PublicComment }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/comments`, { method: "POST", body: { body } });
+}
+
+export function bringSignalIntoField(postId: string): Promise<{ seedId: string; post: PublicPost }> {
+  return request<{ seedId: string; post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/seed`, { method: "POST" });
+}
+
+export function startSignalProjectCircle(postId: string, input: { direction: ProjectDirection; nextAction: string; firstMilestone: string }): Promise<{ projectId: string; post: PublicPost }> {
+  return request<{ projectId: string; post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/project-circle`, { method: "POST", body: input });
+}
+
+export function offerToSignal(postId: string, input: { kind: SignalOfferKind; note: string }): Promise<{ post: PublicPost }> {
+  return request<{ post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/offers`, { method: "POST", body: input });
+}
+
+export function getIncomingSignalOffers(): Promise<{ offers: SignalOffer[] }> {
+  return request<{ offers: SignalOffer[] }>("/api/v1/top/signal-offers");
+}
+
+export function respondToSignalOffer(offerId: string, input: { response: "accepted" | "declined"; role?: "contributor" | "mentor" }): Promise<{ message: string; projectId: string | null }> {
+  return request<{ message: string; projectId: string | null }>(`/api/v1/top/signal-offers/${encodeURIComponent(offerId)}/respond`, { method: "POST", body: input });
 }
 
 export function getPublicProfile(personId: string): Promise<{ profile: PublicProfile }> {

@@ -24,7 +24,7 @@
       </section>
 
       <article v-if="detail" class="seed-room">
-        <header><div><span>{{ statusLabel(detail.status) }}</span><h3>{{ detail.title }}</h3></div><button v-if="detail.status !== 'archived'" type="button" @click="archive">Archive</button></header>
+        <header><div><span>{{ detail.sourcePublicPostId ? 'FROM A PUBLIC TOP SIGNAL' : statusLabel(detail.status) }}</span><h3>{{ detail.title }}</h3></div><button v-if="detail.status !== 'archived'" type="button" @click="archive">Archive</button></header>
         <section class="seed-origin"><div><span>THE TENSION</span><p>{{ detail.problem }}</p></div><div><span>THE HOPE</span><p>{{ detail.desiredOutcome }}</p></div></section>
 
         <section v-if="detail.status !== 'archived'" class="tend-station"><span>TEND THIS SEED</span><p>What did you notice, learn, test, or decide since you last returned?</p><form @submit.prevent="tend"><textarea v-model.trim="entryDraft" maxlength="1000" placeholder="Add one honest note to help this seed grow…"></textarea><div><small>{{ entryDraft.length }}/1000</small><button type="submit" :disabled="tending || entryDraft.length < 3">{{ tending ? "Tending…" : "Keep this note" }}</button></div></form></section>

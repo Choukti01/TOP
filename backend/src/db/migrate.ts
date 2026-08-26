@@ -8,7 +8,9 @@ import { createDatabase } from "./client.js";
 
 const envPath = resolve(process.cwd(), ".env");
 
-if (existsSync(envPath)) {
+// An explicit DATABASE_URL is authoritative. This keeps a one-time production
+// migration from accidentally falling back to a developer's local .env file.
+if (existsSync(envPath) && !process.env.DATABASE_URL) {
   process.loadEnvFile(envPath);
 }
 

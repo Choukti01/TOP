@@ -54,7 +54,7 @@ import CollaborationInbox from "../components/workspace/CollaborationInbox.vue";
 import DirectMessagesInbox from "../components/workspace/DirectMessagesInbox.vue";
 import { authState, leaveTop, profileVisualState, refineTopProfile, saveTopAvatar } from "../lib/auth";
 import { topLogoUrl } from "../lib/brand";
-import { getPersonalDashboard, getTopNotifications, subscribeToTopSignals, type PersonalDashboard } from "../lib/api";
+import { getDirectConversations, getPersonalDashboard, getTopNotifications, subscribeToTopSignals, type PersonalDashboard } from "../lib/api";
 
 const router = useRouter();
 const route = useRoute();
@@ -72,12 +72,13 @@ const savingField = ref(false);
 const dashboard = ref<PersonalDashboard | null>(null);
 const avatarInput = ref<HTMLInputElement>();
 const unreadSignals = ref(0);
+const unreadMessages = ref(0);
 const panels = computed(() => [
   { id: "overview" as const, label: "Overview", mark: "◌" },
   { id: "identity" as const, label: "Identity", mark: "✦" },
   { id: "field" as const, label: "Field", mark: "△" },
   { id: "signals" as const, label: unreadSignals.value ? `Signals · ${unreadSignals.value}` : "Signals", mark: "◌" },
-  { id: "messages" as const, label: "Messages", mark: "✉" },
+  { id: "messages" as const, label: unreadMessages.value ? `Messages · ${unreadMessages.value}` : "Messages", mark: "✉" },
   { id: "account" as const, label: "Account", mark: "⌘" }
 ]);
 const panelHeading = computed(() => ({ overview: "YOUR TOP SIGNAL", identity: "IDENTITY, NOT PERFORMANCE", field: "YOUR PRIVATE FIELD", signals: "YOUR PRIVATE SIGNALS", messages: "YOUR PRIVATE MESSAGES", account: "PRIVACY & ACCESS" })[activePanel.value]);
@@ -104,8 +105,8 @@ try {
   fieldIntention.value = localStorage.getItem("top-field-intention") ?? "";
 } catch { /* Private browser settings may block local storage. */ }
 
-onMounted(() => { void loadDashboard(); void loadUnreadSignals(); });
-const stopLiveSignals = subscribeToTopSignals(() => { void loadUnreadSignals(); });
+onMounted(() => { void loadDashboard(); void loadUnreadSignals(); void loadUnreadMessages(); });
+const stopLiveSignals = subscribeToTopSignals(() => { void loadUnreadSignals(); void loadUnreadMessages(); });
 onUnmounted(stopLiveSignals);
 
 async function save(): Promise<void> {
@@ -130,6 +131,10 @@ async function loadDashboard(): Promise<void> {
 
 async function loadUnreadSignals(): Promise<void> {
   try { unreadSignals.value = (await getTopNotifications()).notifications.filter((notification) => !notification.readAt).length; } catch { unreadSignals.value = 0; }
+}
+
+async function loadUnreadMessages(): Promise<void> {
+  try { unreadMessages.value = (await getDirectConversations()).conversations.reduce((total, conversation) => total + conversation.unreadCount, 0); } catch { unreadMessages.value = 0; }
 }
 
 async function chooseAvatar(event: Event): Promise<void> {

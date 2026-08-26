@@ -14,6 +14,8 @@ export function buildApp(config: AppConfig) {
   const auth = new AuthService(config);
   const allowedOrigins = new Set([
     config.webOrigin,
+    "https://t0p.world",
+    "https://www.t0p.world",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5188",

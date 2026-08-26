@@ -7,7 +7,10 @@ services:
     # Render builds with NODE_ENV=production. Explicitly retain build-time
     # dependencies such as TypeScript and @types/node for the compile step.
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm start
+    # The Free plan does not provide a pre-deploy hook. Drizzle keeps this
+    # idempotent, so applying pending migrations before boot makes every
+    # deployment safe for an empty production database.
+    startCommand: npm run db:migrate && npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

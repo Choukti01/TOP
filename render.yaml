@@ -4,7 +4,9 @@ services:
     runtime: node
     rootDir: backend
     plan: free
-    buildCommand: npm ci && npm run build
+    # Render builds with NODE_ENV=production. Explicitly retain build-time
+    # dependencies such as TypeScript and @types/node for the compile step.
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
     envVars:

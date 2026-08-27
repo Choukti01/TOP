@@ -15,6 +15,7 @@
   --top-display: var(--top-hand);
   --top-body: var(--top-hand);
   --top-mono: "DM Mono", "Cascadia Mono", monospace;
+  font-variant-emoji: text;
 }
 
 :root,
@@ -193,6 +194,79 @@ select:focus-visible { outline: 2px solid var(--top-cyan) !important; outline-of
   .workspace .tool-row small { font-size:7px; }
   .surface { padding-left:12px; padding-right:12px; }
   .surface .project-card,.surface .focus-intro,.surface .focus-result,.surface .reflection-form,.surface .project-room,.surface .empty-state,.surface .create-card { padding:18px; }
+}
+
+/* Public pages share this phone composition so cards, controls, and headers keep their own space. */
+@media (max-width: 760px) {
+  :where(.top-page, .public-profile-page, .profile-view, .join-view, .movement-page) {
+    overflow-x: clip !important;
+    padding-bottom: calc(52px + env(safe-area-inset-bottom)) !important;
+  }
+
+  :where(.top-page, .public-profile-page, .profile-view, .join-view, .movement-page) button {
+    min-height: 42px;
+    touch-action: manipulation;
+  }
+
+  .top-page .top-header,
+  .public-profile-page .profile-rail,
+  .profile-view .profile-header,
+  .join-view .join-header,
+  .movement-page .movement-header {
+    gap: 10px;
+  }
+
+  .top-page .top-header nav {
+    -ms-overflow-style: none;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .top-page .top-header nav::-webkit-scrollbar { display: none; }
+  .top-page .signal-composer,
+  .top-page .post-card { padding: 18px; }
+  .top-page .response-panel form > button { min-height: 42px; }
+  .public-profile-page .connection-panel button { min-height: 46px; }
+  .public-profile-page .shared-post-card { padding: 17px; }
+  .profile-view .profile-save { min-height: 46px; }
+  .join-view .join-submit,
+  .movement-page .movement-card form > button,
+  .movement-page .movement-actions button { min-height: 46px; }
+}
+
+@media (max-width: 480px) {
+  .top-page { padding-left: max(14px, env(safe-area-inset-left)) !important; padding-right: max(14px, env(safe-area-inset-right)) !important; }
+  .top-page .top-header { grid-template-columns: auto 1fr; }
+  .top-page .top-header nav { grid-column: 1 / -1; grid-row: 2; }
+  .top-page .self-card { justify-self: end; }
+  .top-page .top-shell { margin-top: 29px; }
+  .top-page .top-intro { padding-bottom: 24px; }
+  .top-page .top-intro h1 { font-size: clamp(42px, 14vw, 54px); }
+  .top-page .kind-picker { gap: 7px; }
+  .top-page .kind-picker button { min-height: 38px; }
+  .top-page .post-editor footer,
+  .top-page .comment-editor footer { align-items: stretch; flex-direction: column; }
+  .top-page .post-editor footer button,
+  .top-page .comment-editor footer button { width: 100%; }
+
+  .public-profile-page { padding-left: max(14px, env(safe-area-inset-left)) !important; padding-right: max(14px, env(safe-area-inset-right)) !important; }
+  .public-profile-page .back-to-top { font-size: 0; margin-left: 4px; min-width: 42px; padding: 0; }
+  .public-profile-page .back-to-top::before { color: var(--top-cyan); content: "←"; font-size: 19px; }
+  .public-profile-page .profile-person h1 { font-size: clamp(43px, 15vw, 55px); }
+  .public-profile-page .identity-line,
+  .public-profile-page .public-stats { grid-template-columns: 1fr; }
+  .public-profile-page .public-stats div + div { border-left: 0; border-top: 1px solid rgba(126, 156, 255, .15); padding-left: 0; padding-top: 10px; }
+  .public-profile-page .shared-counts { gap: 8px; }
+  .public-profile-page .shared-counts span,
+  .public-profile-page .shared-counts button { min-height: 36px; }
+
+  .profile-view .profile-actions { align-items: stretch; flex-direction: column; gap: 12px; }
+  .profile-view .profile-save { justify-content: space-between; width: 100%; }
+  .profile-view .profile-leave { min-height: 42px; text-align: left; }
+  .join-view .join-home { font-size: 0; min-width: 44px; padding: 0; justify-content: center; }
+  .join-view .join-home span { font-size: 17px; }
+  .movement-page .movement-skip { font-size: 0; min-width: 44px; padding: 0; justify-content: center; }
+  .movement-page .movement-skip span { font-size: 16px; }
 }
 
 @media (hover: none) {

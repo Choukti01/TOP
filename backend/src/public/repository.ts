@@ -11,10 +11,10 @@ export type SignalOfferKind = "help" | "skill" | "collaboration";
 export type SignalOfferStatus = "pending" | "accepted" | "declined";
 
 export interface PublicPersonSummary { id: string; displayName: string; fieldName: string | null; location: string | null; avatarDataUrl: string | null; memberSince: string; }
-export interface PublicComment { id: string; postId: string; body: string; createdAt: string; author: PublicPersonSummary; }
+export interface PublicComment { id: string; postId: string; parentCommentId: string | null; body: string; createdAt: string; updatedAt: string; author: PublicPersonSummary; }
 export interface PublicReactionPerson { reaction: PublicReaction; person: PublicPersonSummary; }
 export interface PublicPostBridge { seedId: string | null; projectId: string | null; circleOpen: boolean; offerStatus: SignalOfferStatus | null; offerKind: SignalOfferKind | null; pendingOfferCount: number; }
-export interface PublicPost { id: string; kind: PublicPostKind; title: string; body: string; createdAt: string; author: PublicPersonSummary; reactions: Record<PublicReaction, number>; reactionPeople: PublicReactionPerson[]; viewerReaction: PublicReaction | null; comments: PublicComment[]; commentCount: number; bridge: PublicPostBridge; }
+export interface PublicPost { id: string; kind: PublicPostKind; title: string; body: string; createdAt: string; updatedAt: string; author: PublicPersonSummary; reactions: Record<PublicReaction, number>; reactionPeople: PublicReactionPerson[]; viewerReaction: PublicReaction | null; comments: PublicComment[]; commentCount: number; bridge: PublicPostBridge; }
 export interface PublicProfile extends PublicPersonSummary { biography: string | null; stats: { projectCount: number; completedMilestoneCount: number; evidenceCount: number; connectionCount: number }; connectionStatus: "self" | "none" | "pending-sent" | "pending-received" | "connected"; sharedPosts: PublicPost[]; }
 export interface ConnectionRequest { id: string; createdAt: string; sender: PublicPersonSummary; }
 export interface DirectMessage { id: string; senderId: string; recipientId: string; body: string; createdAt: string; sender: PublicPersonSummary; }
@@ -28,8 +28,12 @@ export interface PublicRepository {
   getPost(viewerId: string, postId: string): Promise<PublicPost | null>;
   search(viewerId: string, query: string): Promise<PublicSearchResults>;
   createPost(userId: string, input: { kind: PublicPostKind; title: string; body: string }): Promise<PublicPost>;
+  updatePost(userId: string, postId: string, input: { kind: PublicPostKind; title: string; body: string }): Promise<PublicPost | null>;
+  deletePost(userId: string, postId: string): Promise<boolean>;
   reactToPost(userId: string, postId: string, reaction: PublicReaction): Promise<PublicPost | null>;
-  addComment(userId: string, postId: string, body: string): Promise<PublicComment | null>;
+  addComment(userId: string, postId: string, input: { body: string; parentCommentId: string | null }): Promise<PublicComment | null>;
+  updateComment(userId: string, postId: string, commentId: string, body: string): Promise<PublicComment | null>;
+  deleteComment(userId: string, postId: string, commentId: string): Promise<boolean>;
   getProfile(viewerId: string, personId: string): Promise<PublicProfile | null>;
   createConnectionRequest(senderId: string, recipientId: string): Promise<boolean>;
   getIncomingConnectionRequests(userId: string): Promise<ConnectionRequest[]>;
@@ -54,8 +58,12 @@ class MemoryPublicRepository implements PublicRepository {
   public async getPost(_viewerId: string, _postId: string): Promise<PublicPost | null> { return null; }
   public async search(_viewerId: string, _query: string): Promise<PublicSearchResults> { return { people: [], posts: [] }; }
   public async createPost(_userId: string, _input: { kind: PublicPostKind; title: string; body: string }): Promise<PublicPost> { throw new Error("Public TOP sharing requires the connected database."); }
+  public async updatePost(_userId: string, _postId: string, _input: { kind: PublicPostKind; title: string; body: string }) { return null; }
+  public async deletePost(_userId: string, _postId: string) { return false; }
   public async reactToPost(_userId: string, _postId: string, _reaction: PublicReaction) { return null; }
-  public async addComment(_userId: string, _postId: string, _body: string) { return null; }
+  public async addComment(_userId: string, _postId: string, _input: { body: string; parentCommentId: string | null }) { return null; }
+  public async updateComment(_userId: string, _postId: string, _commentId: string, _body: string) { return null; }
+  public async deleteComment(_userId: string, _postId: string, _commentId: string) { return false; }
   public async getProfile(_viewerId: string, _personId: string) { return null; }
   public async createConnectionRequest(_senderId: string, _recipientId: string) { return false; }
   public async getIncomingConnectionRequests(_userId: string) { return []; }
@@ -106,6 +114,21 @@ class PostgreSqlPublicRepository implements PublicRepository {
     const result = await this.getPost(userId, post.id);
     if (!result) throw new Error("TOP could not open the signal it just shared.");
     return result;
+  }
+
+  public async updatePost(userId: string, postId: string, input: { kind: PublicPostKind; title: string; body: string }): Promise<PublicPost | null> {
+    const [updated] = await this.database.update(publicPosts)
+      .set({ kind: input.kind, title: input.title, body: input.body, updatedAt: new Date() })
+      .where(and(eq(publicPosts.id, postId), eq(publicPosts.authorId, userId)))
+      .returning({ id: publicPosts.id });
+    return updated ? this.getPost(userId, updated.id) : null;
+  }
+
+  public async deletePost(userId: string, postId: string): Promise<boolean> {
+    const deleted = await this.database.delete(publicPosts)
+      .where(and(eq(publicPosts.id, postId), eq(publicPosts.authorId, userId)))
+      .returning({ id: publicPosts.id });
+    return deleted.length > 0;
   }
 
   public async createSeedFromPost(userId: string, postId: string): Promise<{ seedId: string; post: PublicPost } | null> {
@@ -218,16 +241,42 @@ class PostgreSqlPublicRepository implements PublicRepository {
     return this.getPost(userId, postId);
   }
 
-  public async addComment(userId: string, postId: string, body: string): Promise<PublicComment | null> {
+  public async addComment(userId: string, postId: string, input: { body: string; parentCommentId: string | null }): Promise<PublicComment | null> {
     const [post] = await this.database.select({ id: publicPosts.id, authorId: publicPosts.authorId, title: publicPosts.title }).from(publicPosts).where(eq(publicPosts.id, postId));
     if (!post) return null;
+    let parent: { id: string; authorId: string } | undefined;
+    if (input.parentCommentId) {
+      [parent] = await this.database.select({ id: postComments.id, authorId: postComments.authorId })
+        .from(postComments)
+        .where(and(eq(postComments.id, input.parentCommentId), eq(postComments.postId, postId)));
+      if (!parent) return null;
+    }
     const now = new Date();
-    const [comment] = await this.database.insert(postComments).values({ postId, authorId: userId, body, createdAt: now }).returning();
+    const [comment] = await this.database.insert(postComments).values({ postId, authorId: userId, parentCommentId: parent?.id ?? null, body: input.body, createdAt: now, updatedAt: now }).returning();
     if (!comment) throw new Error("TOP could not add that response.");
     const author = await this.personSummary(userId);
     if (!author) throw new Error("TOP could not identify the person responding.");
-    if (post.authorId !== userId) await this.createNotification(post.authorId, comment.id, "top-response", `${author.displayName} responded to ${post.title}`, "A person added a constructive response to your shared signal.", `/top?signal=${post.id}&comment=${comment.id}`, now);
-    return { id: comment.id, postId: comment.postId, body: comment.body, createdAt: iso(comment.createdAt), author };
+    const recipientId = parent?.authorId ?? post.authorId;
+    if (recipientId !== userId) await this.createNotification(recipientId, comment.id, parent ? "top-reply" : "top-response", parent ? `${author.displayName} replied to your response` : `${author.displayName} responded to ${post.title}`, parent ? "A person continued the conversation you started." : "A person added a constructive response to your shared signal.", `/top?signal=${post.id}&comment=${comment.id}`, now);
+    return { id: comment.id, postId: comment.postId, parentCommentId: comment.parentCommentId, body: comment.body, createdAt: iso(comment.createdAt), updatedAt: iso(comment.updatedAt), author };
+  }
+
+  public async updateComment(userId: string, postId: string, commentId: string, body: string): Promise<PublicComment | null> {
+    const [comment] = await this.database.update(postComments)
+      .set({ body, updatedAt: new Date() })
+      .where(and(eq(postComments.id, commentId), eq(postComments.postId, postId), eq(postComments.authorId, userId)))
+      .returning();
+    if (!comment) return null;
+    const author = await this.personSummary(userId);
+    if (!author) throw new Error("TOP could not identify the person editing this response.");
+    return { id: comment.id, postId: comment.postId, parentCommentId: comment.parentCommentId, body: comment.body, createdAt: iso(comment.createdAt), updatedAt: iso(comment.updatedAt), author };
+  }
+
+  public async deleteComment(userId: string, postId: string, commentId: string): Promise<boolean> {
+    const deleted = await this.database.delete(postComments)
+      .where(and(eq(postComments.id, commentId), eq(postComments.postId, postId), eq(postComments.authorId, userId)))
+      .returning({ id: postComments.id });
+    return deleted.length > 0;
   }
 
   public async getProfile(viewerId: string, personId: string): Promise<PublicProfile | null> {
@@ -357,7 +406,7 @@ class PostgreSqlPublicRepository implements PublicRepository {
       const viewerReaction = postReactionsForPost.find((reaction) => reaction.userId === viewerId)?.reaction as PublicReaction | undefined;
       const viewerOffer = viewerOfferByPostId.get(post.id);
       const visibleComments = includeAllComments ? postCommentsForPost : postCommentsForPost.slice(0, 3);
-      return { id: post.id, kind: post.kind as PublicPostKind, title: post.title, body: post.body, createdAt: iso(post.createdAt), author: { id: authorId, displayName: displayName ?? "TOP member", fieldName, location, avatarDataUrl, memberSince: iso(memberSince) }, reactions: reactionCount, reactionPeople: postReactionsForPost.map((reaction) => ({ reaction: reaction.reaction as PublicReaction, person: { id: reaction.userId, displayName: reaction.displayName ?? "TOP member", fieldName: reaction.fieldName, location: reaction.location, avatarDataUrl: reaction.avatarDataUrl, memberSince: iso(reaction.memberSince) } })), viewerReaction: viewerReaction ?? null, comments: visibleComments.map(({ comment, authorId: commentAuthorId, displayName: commentName, fieldName: commentFieldName, location: commentLocation, avatarDataUrl: commentAvatarDataUrl, memberSince: commentMemberSince }) => ({ id: comment.id, postId: comment.postId, body: comment.body, createdAt: iso(comment.createdAt), author: { id: commentAuthorId, displayName: commentName ?? "TOP member", fieldName: commentFieldName, location: commentLocation, avatarDataUrl: commentAvatarDataUrl, memberSince: iso(commentMemberSince) } })), commentCount: postCommentsForPost.length, bridge: { seedId: seedByPostId.get(post.id) ?? null, projectId: authorId === viewerId ? post.projectId : null, circleOpen: Boolean(post.projectId), offerStatus: viewerOffer ? viewerOffer.status as SignalOfferStatus : null, offerKind: viewerOffer ? viewerOffer.kind as SignalOfferKind : null, pendingOfferCount: authorId === viewerId ? pendingOfferCountByPostId.get(post.id) ?? 0 : 0 } };
+      return { id: post.id, kind: post.kind as PublicPostKind, title: post.title, body: post.body, createdAt: iso(post.createdAt), updatedAt: iso(post.updatedAt), author: { id: authorId, displayName: displayName ?? "TOP member", fieldName, location, avatarDataUrl, memberSince: iso(memberSince) }, reactions: reactionCount, reactionPeople: postReactionsForPost.map((reaction) => ({ reaction: reaction.reaction as PublicReaction, person: { id: reaction.userId, displayName: reaction.displayName ?? "TOP member", fieldName: reaction.fieldName, location: reaction.location, avatarDataUrl: reaction.avatarDataUrl, memberSince: iso(reaction.memberSince) } })), viewerReaction: viewerReaction ?? null, comments: visibleComments.map(({ comment, authorId: commentAuthorId, displayName: commentName, fieldName: commentFieldName, location: commentLocation, avatarDataUrl: commentAvatarDataUrl, memberSince: commentMemberSince }) => ({ id: comment.id, postId: comment.postId, parentCommentId: comment.parentCommentId, body: comment.body, createdAt: iso(comment.createdAt), updatedAt: iso(comment.updatedAt), author: { id: commentAuthorId, displayName: commentName ?? "TOP member", fieldName: commentFieldName, location: commentLocation, avatarDataUrl: commentAvatarDataUrl, memberSince: iso(commentMemberSince) } })), commentCount: postCommentsForPost.length, bridge: { seedId: seedByPostId.get(post.id) ?? null, projectId: authorId === viewerId ? post.projectId : null, circleOpen: Boolean(post.projectId), offerStatus: viewerOffer ? viewerOffer.status as SignalOfferStatus : null, offerKind: viewerOffer ? viewerOffer.kind as SignalOfferKind : null, pendingOfferCount: authorId === viewerId ? pendingOfferCountByPostId.get(post.id) ?? 0 : 0 } };
     });
   }
 

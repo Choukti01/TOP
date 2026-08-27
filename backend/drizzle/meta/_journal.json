@@ -85,6 +85,13 @@
       "when": 1788220800000,
       "tag": "0011_signal_to_project_bridge",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788307200000,
+      "tag": "0012_public_authorship",
+      "breakpoints": true
     }
   ]
 }

@@ -68,8 +68,8 @@ async function submit(): Promise<void> {
   try {
     if (isRegistering.value) {
       await createTopAccount({ email: email.value, displayName: displayName.value, password: password.value });
-      const next = typeof route.query.next === "string" && route.query.next.startsWith("/") ? route.query.next : "/top";
-      await router.push(next);
+      const next = typeof route.query.next === "string" && route.query.next.startsWith("/") ? route.query.next : "";
+      await router.push(next ? { path: "/onboarding", query: { next } } : "/onboarding");
       return;
     }
 

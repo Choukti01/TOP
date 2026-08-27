@@ -37,8 +37,10 @@ export interface PublicPersonSummary {
 export interface PublicComment {
   id: string;
   postId: string;
+  parentCommentId: string | null;
   body: string;
   createdAt: string;
+  updatedAt: string;
   author: PublicPersonSummary;
 }
 
@@ -53,6 +55,7 @@ export interface PublicPost {
   title: string;
   body: string;
   createdAt: string;
+  updatedAt: string;
   author: PublicPersonSummary;
   reactions: Record<PublicReaction, number>;
   reactionPeople: PublicReactionPerson[];
@@ -399,6 +402,14 @@ export function createPublicPost(input: { kind: PublicPostKind; title: string; b
   return request<{ post: PublicPost }>("/api/v1/top/posts", { method: "POST", body: input });
 }
 
+export function updatePublicPost(postId: string, input: { kind: PublicPostKind; title: string; body: string }): Promise<{ post: PublicPost }> {
+  return request<{ post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}`, { method: "PATCH", body: input });
+}
+
+export function deletePublicPost(postId: string): Promise<void> {
+  return request<void>(`/api/v1/top/posts/${encodeURIComponent(postId)}`, { method: "DELETE" });
+}
+
 export function getPublicPost(postId: string): Promise<{ post: PublicPost }> {
   return request<{ post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}`);
 }
@@ -407,8 +418,16 @@ export function reactToPublicPost(postId: string, reaction: PublicReaction): Pro
   return request<{ post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/reactions`, { method: "POST", body: { reaction } });
 }
 
-export function addPublicComment(postId: string, body: string): Promise<{ comment: PublicComment }> {
-  return request<{ comment: PublicComment }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/comments`, { method: "POST", body: { body } });
+export function addPublicComment(postId: string, input: { body: string; parentCommentId?: string | null }): Promise<{ comment: PublicComment }> {
+  return request<{ comment: PublicComment }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/comments`, { method: "POST", body: input });
+}
+
+export function updatePublicComment(postId: string, commentId: string, input: { body: string }): Promise<{ comment: PublicComment }> {
+  return request<{ comment: PublicComment }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`, { method: "PATCH", body: input });
+}
+
+export function deletePublicComment(postId: string, commentId: string): Promise<void> {
+  return request<void>(`/api/v1/top/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`, { method: "DELETE" });
 }
 
 export function bringSignalIntoField(postId: string): Promise<{ seedId: string; post: PublicPost }> {

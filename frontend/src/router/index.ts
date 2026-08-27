@@ -5,6 +5,7 @@ import IdentityView from "../views/IdentityView.vue";
 import GeneratingView from "../views/GeneratingView.vue";
 import Workspace from "../components/workspace/Workspace.vue";
 import JoinView from "../views/JoinView.vue";
+import FirstMovementView from "../views/FirstMovementView.vue";
 import ProfileView from "../views/ProfileView.vue";
 import TopPageView from "../views/TopPageView.vue";
 import PublicProfileView from "../views/PublicProfileView.vue";
@@ -62,6 +63,12 @@ const router = createRouter({
         {
             path: "/join",
             component: JoinView
+        },
+
+        {
+            path: "/onboarding",
+            component: FirstMovementView,
+            meta: { requiresAuth: true }
         },
 
         {

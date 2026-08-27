@@ -26,11 +26,13 @@
         <ol v-else class="post-list">
           <li v-for="post in posts" :id="`public-post-${post.id}`" :key="post.id" class="post-card">
             <button class="post-person" type="button" @click="openPerson(post.author.id)"><span><img v-if="post.author.avatarDataUrl" :src="post.author.avatarDataUrl" :alt="`${post.author.displayName}'s profile`" /><b v-else>{{ initialsFor(post.author.displayName) }}</b></span><div><small>{{ post.kind }}</small><strong>{{ post.author.displayName }}</strong><em>{{ post.author.fieldName || 'A field still taking shape' }} · {{ formatTime(post.createdAt) }}</em></div><i>↗</i></button>
-            <article><h2>{{ post.title }}</h2><p>{{ post.body }}</p></article>
+            <div v-if="isOwnPost(post)" class="post-ownership"><button type="button" :aria-expanded="postEdit?.id === post.id" @click="postEdit?.id === post.id ? cancelPostEdit() : startPostEdit(post)">{{ postEdit?.id === post.id ? 'Close editing' : 'Manage signal' }}</button></div>
+            <article v-if="postEdit?.id !== post.id"><h2>{{ post.title }}</h2><p>{{ post.body }}</p><small v-if="post.updatedAt !== post.createdAt" class="edited-marker">Edited {{ formatTime(post.updatedAt) }}</small></article>
+            <form v-else class="post-editor" @submit.prevent="savePostEdit(post.id)"><label><span>SIGNAL KIND</span><select v-model="postEdit.kind"><option v-for="kind in kinds" :key="kind.value" :value="kind.value">{{ kind.label }}</option></select></label><label><span>TITLE</span><input v-model.trim="postEdit.title" maxlength="140" required /></label><label><span>DETAILS</span><textarea v-model.trim="postEdit.body" maxlength="2000" required></textarea></label><footer><button type="button" class="quiet-action" :disabled="savingPostId === post.id" @click="cancelPostEdit">Cancel</button><button type="button" class="danger-action" :disabled="savingPostId === post.id" @click="removePost(post)">Delete signal</button><button type="submit" :disabled="savingPostId === post.id || postEdit.title.length < 3 || postEdit.body.length < 3">{{ savingPostId === post.id ? 'Saving…' : 'Save changes' }}</button></footer></form>
             <SignalBridge :post="post" @updated="replacePost" />
             <div class="reaction-row" aria-label="Meaningful reactions"><button v-for="reaction in reactionChoices" :key="reaction.value" type="button" :class="{ selected: post.viewerReaction === reaction.value }" :disabled="reactingId === post.id" :title="reaction.hint" @click="react(post.id, reaction.value)"><i>{{ reaction.mark }}</i><span>{{ reaction.label }}</span><b>{{ post.reactions[reaction.value] || '' }}</b></button></div>
             <div v-if="post.reactionPeople.length" class="reaction-people"><small>PEOPLE WHO MOVED THIS</small><div><button v-for="entry in post.reactionPeople" :key="`${entry.reaction}-${entry.person.id}`" type="button" :class="{ focused: focusedReaction(post.id, entry.person.id) }" @click="openPerson(entry.person.id)"><i><img v-if="entry.person.avatarDataUrl" :src="entry.person.avatarDataUrl" :alt="`${entry.person.displayName}'s profile`" /><b v-else>{{ initialsFor(entry.person.displayName) }}</b></i><span>{{ entry.person.displayName }}</span><em>{{ reactionLabel(entry.reaction) }}</em></button></div></div>
-            <section class="response-space"><button class="response-toggle" type="button" @click="toggleComments(post.id)">{{ openComments[post.id] ? 'Close responses' : `${post.commentCount || 'No'} responses` }} <span>{{ openComments[post.id] ? '↑' : '↓' }}</span></button><div v-if="openComments[post.id]" class="response-panel"><ol v-if="post.comments.length" class="comment-list"><li v-for="comment in post.comments" :id="`public-comment-${comment.id}`" :key="comment.id" :class="{ focused: focusedComment(post.id, comment.id) }"><button type="button" @click="openPerson(comment.author.id)"><i><img v-if="comment.author.avatarDataUrl" :src="comment.author.avatarDataUrl" :alt="`${comment.author.displayName}'s profile`" /><b v-else>{{ initialsFor(comment.author.displayName) }}</b></i>{{ comment.author.displayName }}</button><p>{{ comment.body }}</p><footer><time>{{ formatTime(comment.createdAt) }}</time><button class="comment-reply" type="button" @click="replyTo(post.id, comment.id, comment.author.displayName)">Reply ↗</button></footer></li></ol><p v-else class="no-comments">No responses yet. Add something that moves the conversation forward.</p><form @submit.prevent="comment(post.id)"><p v-if="replyingTo[post.id]" class="reply-context">Replying publicly to <strong>@{{ replyingTo[post.id].name }}</strong><button type="button" @click="clearReply(post.id)">Cancel</button></p><textarea v-model.trim="commentDrafts[post.id]" maxlength="1000" :placeholder="replyingTo[post.id] ? `Reply to ${replyingTo[post.id].name}…` : 'Add a thoughtful response…'"></textarea><button type="submit" :disabled="commentingId === post.id || !(commentDrafts[post.id] || '').trim()">{{ commentingId === post.id ? 'Adding…' : replyingTo[post.id] ? 'Reply publicly' : 'Add response' }}</button></form></div></section>
+            <section class="response-space"><button class="response-toggle" type="button" :aria-expanded="Boolean(openComments[post.id])" @click="toggleComments(post.id)">{{ openComments[post.id] ? 'Close responses' : `${post.commentCount || 'No'} responses` }} <span>{{ openComments[post.id] ? '↑' : '↓' }}</span></button><div v-if="openComments[post.id]" class="response-panel"><ol v-if="post.comments.length" class="comment-list"><li v-for="entry in orderedComments(post)" :id="`public-comment-${entry.comment.id}`" :key="entry.comment.id" :class="[{ focused: focusedComment(post.id, entry.comment.id), 'comment-reply-item': entry.depth > 0 }]" :style="{ '--reply-depth': Math.min(entry.depth, 3) }"><button type="button" @click="openPerson(entry.comment.author.id)"><i><img v-if="entry.comment.author.avatarDataUrl" :src="entry.comment.author.avatarDataUrl" :alt="`${entry.comment.author.displayName}'s profile`" /><b v-else>{{ initialsFor(entry.comment.author.displayName) }}</b></i>{{ entry.comment.author.displayName }}</button><form v-if="commentEdit?.commentId === entry.comment.id" class="comment-editor" @submit.prevent="saveCommentEdit(post.id, entry.comment.id)"><textarea v-model.trim="commentEdit.body" maxlength="1000" required></textarea><footer><button type="button" class="quiet-action" :disabled="savingCommentId === entry.comment.id" @click="cancelCommentEdit">Cancel</button><button type="submit" :disabled="savingCommentId === entry.comment.id || commentEdit.body.length < 1">{{ savingCommentId === entry.comment.id ? 'Saving…' : 'Save response' }}</button></footer></form><template v-else><p>{{ entry.comment.body }}</p><footer><time>{{ formatTime(entry.comment.createdAt) }}<template v-if="entry.comment.updatedAt !== entry.comment.createdAt"> · edited</template></time><div class="comment-actions"><button v-if="isOwnComment(entry.comment)" class="comment-reply" type="button" @click="startCommentEdit(post.id, entry.comment)">Edit</button><button v-if="isOwnComment(entry.comment)" class="comment-delete" type="button" @click="removeComment(post, entry.comment.id)">Delete</button><button class="comment-reply" type="button" @click="replyTo(post.id, entry.comment.id, entry.comment.author.displayName)">Reply ↗</button></div></footer></template></li></ol><p v-else class="no-comments">No responses yet. Add something that moves the conversation forward.</p><form @submit.prevent="comment(post.id)"><p v-if="replyingTo[post.id]" class="reply-context">Replying publicly to <strong>@{{ replyingTo[post.id].name }}</strong><button type="button" @click="clearReply(post.id)">Cancel</button></p><label class="sr-only" :for="`comment-draft-${post.id}`">{{ replyingTo[post.id] ? `Reply to ${replyingTo[post.id].name}` : 'Add a response' }}</label><textarea :id="`comment-draft-${post.id}`" v-model.trim="commentDrafts[post.id]" maxlength="1000" :placeholder="replyingTo[post.id] ? `Reply to ${replyingTo[post.id].name}…` : 'Add a thoughtful response…'"></textarea><button type="submit" :disabled="commentingId === post.id || !(commentDrafts[post.id] || '').trim()">{{ commentingId === post.id ? 'Adding…' : replyingTo[post.id] ? 'Reply publicly' : 'Add response' }}</button></form></div></section>
           </li>
         </ol>
       </section>
@@ -44,7 +46,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
-import { addPublicComment, createPublicPost, getPublicPost, getTopFeed, getTopNotifications, reactToPublicPost, searchTop, sendConnectionRequest, subscribeToTopSignals, type PublicPost, type PublicPostKind, type PublicReaction, type PublicSearchResults } from "../lib/api";
+import { addPublicComment, createPublicPost, deletePublicComment, deletePublicPost, getPublicPost, getTopFeed, getTopNotifications, reactToPublicPost, searchTop, sendConnectionRequest, subscribeToTopSignals, updatePublicComment, updatePublicPost, type PublicComment, type PublicPost, type PublicPostKind, type PublicReaction, type PublicSearchResults } from "../lib/api";
 import { authState } from "../lib/auth";
 import { topLogoUrl } from "../lib/brand";
 import SignalBridge from "../components/SignalBridge.vue";
@@ -56,6 +58,8 @@ const loading = ref(true);
 const publishing = ref(false);
 const reactingId = ref("");
 const commentingId = ref("");
+const savingPostId = ref("");
+const savingCommentId = ref("");
 const unreadCount = ref(0);
 const draftKind = ref<PublicPostKind>("idea");
 const draftTitle = ref("");
@@ -63,6 +67,8 @@ const draftBody = ref("");
 const openComments = ref<Record<string, boolean>>({});
 const commentDrafts = ref<Record<string, string>>({});
 const replyingTo = ref<Record<string, { id: string; name: string }>>({});
+const postEdit = ref<{ id: string; kind: PublicPostKind; title: string; body: string } | null>(null);
+const commentEdit = ref<{ postId: string; commentId: string; body: string } | null>(null);
 const discoveryInput = ref<HTMLInputElement>();
 const searchQuery = ref("");
 const searchResults = ref<PublicSearchResults | null>(null);
@@ -80,9 +86,39 @@ function reactionLabel(reaction: PublicReaction): string { return { spark: "Spar
 function focusedReaction(postId: string, personId: string): boolean { return typeof route.query.signal === "string" && route.query.signal === postId && typeof route.query.reaction === "string" && route.query.reaction === personId; }
 function focusedComment(postId: string, commentId: string): boolean { return typeof route.query.signal === "string" && route.query.signal === postId && typeof route.query.comment === "string" && route.query.comment === commentId; }
 function openPerson(id: string): void { void router.push(`/people/${id}`); }
-function toggleComments(id: string): void { openComments.value = { ...openComments.value, [id]: !openComments.value[id] }; }
+function isOwnPost(post: PublicPost): boolean { return post.author.id === authState.user?.id; }
+function isOwnComment(comment: PublicComment): boolean { return comment.author.id === authState.user?.id; }
+function orderedComments(post: PublicPost): Array<{ comment: PublicComment; depth: number }> {
+  const byParent = new Map<string | null, PublicComment[]>();
+  const ids = new Set(post.comments.map((comment) => comment.id));
+  for (const comment of post.comments) {
+    const parentId = comment.parentCommentId && ids.has(comment.parentCommentId) ? comment.parentCommentId : null;
+    const siblings = byParent.get(parentId) ?? [];
+    siblings.push(comment);
+    byParent.set(parentId, siblings);
+  }
+  for (const siblings of byParent.values()) siblings.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const ordered: Array<{ comment: PublicComment; depth: number }> = [];
+  const visit = (parentId: string | null, depth: number): void => {
+    for (const comment of byParent.get(parentId) ?? []) {
+      ordered.push({ comment, depth });
+      visit(comment.id, depth + 1);
+    }
+  };
+  visit(null, 0);
+  return ordered;
+}
+async function toggleComments(id: string): Promise<void> {
+  if (openComments.value[id]) { openComments.value = { ...openComments.value, [id]: false }; return; }
+  openComments.value = { ...openComments.value, [id]: true };
+  try { replacePost((await getPublicPost(id)).post); } catch (error) { actionMessage.value = error instanceof Error ? error.message : "TOP could not open these responses."; }
+}
 function replyTo(postId: string, commentId: string, name: string): void { openComments.value = { ...openComments.value, [postId]: true }; replyingTo.value = { ...replyingTo.value, [postId]: { id: commentId, name } }; }
-function clearReply(postId: string): void { const { [postId]: _reply, ...remaining } = replyingTo.value; replyingTo.value = remaining; }
+function clearReply(postId: string): void { const remaining = { ...replyingTo.value }; delete remaining[postId]; replyingTo.value = remaining; }
+function startPostEdit(post: PublicPost): void { postEdit.value = { id: post.id, kind: post.kind, title: post.title, body: post.body }; actionMessage.value = ""; }
+function cancelPostEdit(): void { postEdit.value = null; }
+function startCommentEdit(postId: string, comment: PublicComment): void { commentEdit.value = { postId, commentId: comment.id, body: comment.body }; actionMessage.value = ""; }
+function cancelCommentEdit(): void { commentEdit.value = null; }
 function openDiscovery(): void { void nextTick(() => discoveryInput.value?.focus()); }
 function clearSearch(): void { searchResults.value = null; searchMessage.value = ""; searchQuery.value = ""; }
 function connectionCopy(status: "self" | "none" | "pending-sent" | "pending-received" | "connected"): string { return { self: "Your profile", none: "", "pending-sent": "Invitation sent", "pending-received": "Review in Signals", connected: "Connected" }[status]; }
@@ -145,15 +181,58 @@ async function comment(postId: string): Promise<void> {
   const body = commentDrafts.value[postId]?.trim();
   if (!body) return;
   const reply = replyingTo.value[postId];
-  const replyPrefix = reply && !body.startsWith(`@${reply.name}`) ? `@${reply.name} ` : "";
   commentingId.value = postId;
   try {
-    const { comment: response } = await addPublicComment(postId, `${replyPrefix}${body}`);
-    posts.value = posts.value.map((post) => post.id === postId ? { ...post, commentCount: post.commentCount + 1, comments: [response, ...post.comments].slice(0, 3) } : post);
+    await addPublicComment(postId, { body, parentCommentId: reply?.id ?? null });
+    replacePost((await getPublicPost(postId)).post);
     commentDrafts.value = { ...commentDrafts.value, [postId]: "" };
     clearReply(postId);
     openComments.value = { ...openComments.value, [postId]: true };
   } catch (error) { actionMessage.value = error instanceof Error ? error.message : "TOP could not add that response."; } finally { commentingId.value = ""; }
+}
+
+async function savePostEdit(postId: string): Promise<void> {
+  if (!postEdit.value || postEdit.value.id !== postId || postEdit.value.title.length < 3 || postEdit.value.body.length < 3) return;
+  savingPostId.value = postId;
+  try {
+    replacePost((await updatePublicPost(postId, { kind: postEdit.value.kind, title: postEdit.value.title, body: postEdit.value.body })).post);
+    postEdit.value = null;
+    actionMessage.value = "Your public signal was updated.";
+  } catch (error) { actionMessage.value = error instanceof Error ? error.message : "TOP could not save that signal."; } finally { savingPostId.value = ""; }
+}
+
+async function removePost(post: PublicPost): Promise<void> {
+  if (!window.confirm(`Delete “${post.title}”? Its public responses and reactions will also be removed.`)) return;
+  savingPostId.value = post.id;
+  try {
+    await deletePublicPost(post.id);
+    posts.value = posts.value.filter((entry) => entry.id !== post.id);
+    if (postEdit.value?.id === post.id) postEdit.value = null;
+    actionMessage.value = "Your public signal was deleted.";
+  } catch (error) { actionMessage.value = error instanceof Error ? error.message : "TOP could not delete that signal."; } finally { savingPostId.value = ""; }
+}
+
+async function saveCommentEdit(postId: string, commentId: string): Promise<void> {
+  if (!commentEdit.value || commentEdit.value.commentId !== commentId || !commentEdit.value.body.trim()) return;
+  savingCommentId.value = commentId;
+  try {
+    await updatePublicComment(postId, commentId, { body: commentEdit.value.body.trim() });
+    replacePost((await getPublicPost(postId)).post);
+    commentEdit.value = null;
+    actionMessage.value = "Your response was updated.";
+  } catch (error) { actionMessage.value = error instanceof Error ? error.message : "TOP could not save that response."; } finally { savingCommentId.value = ""; }
+}
+
+async function removeComment(post: PublicPost, commentId: string): Promise<void> {
+  if (!window.confirm("Delete this response? Replies beneath it will also be removed.")) return;
+  savingCommentId.value = commentId;
+  try {
+    await deletePublicComment(post.id, commentId);
+    replacePost((await getPublicPost(post.id)).post);
+    if (commentEdit.value?.commentId === commentId) commentEdit.value = null;
+    clearReply(post.id);
+    actionMessage.value = "Your response was deleted.";
+  } catch (error) { actionMessage.value = error instanceof Error ? error.message : "TOP could not delete that response."; } finally { savingCommentId.value = ""; }
 }
 
 async function focusRequestedSignal(): Promise<void> {
@@ -189,4 +268,5 @@ async function refreshNotifications(): Promise<void> {
 .post-person > span,.self-card span,.result-person > i,.comment-list button i { overflow:hidden; }.post-person > span img,.self-card span img,.result-person > i img,.comment-list button i img { height:100%; object-fit:cover; width:100%; }.post-person > span b,.self-card span b,.result-person > i b,.comment-list button i b { font:inherit; }.comment-list button { align-items:center; display:inline-flex; gap:6px; }.comment-list button i { align-items:center; background:linear-gradient(145deg,var(--top-cyan),var(--top-violet)); border-radius:6px 6px 2px 6px; color:#07101d; display:inline-flex; font-family:var(--top-display); font-size:7px; font-style:normal; font-weight:800; height:18px; justify-content:center; width:18px; }
 .reaction-row { gap:9px; margin-top:22px; }.reaction-row button { min-height:34px; padding:8px 12px; }.reaction-people { border-top:1px solid rgba(126,156,255,.14); display:grid; gap:9px; margin-top:16px; padding-top:14px; }.reaction-people > small { color:var(--top-muted); font-family:var(--top-mono); font-size:7px; letter-spacing:.12em; }.reaction-people > div { display:flex; flex-wrap:wrap; gap:7px; }.reaction-people button { align-items:center; background:rgba(98,230,255,.045); border:1px solid rgba(126,156,255,.18); border-radius:999px; color:var(--top-ink); cursor:pointer; display:inline-flex; gap:6px; max-width:100%; padding:5px 8px 5px 5px; transition:.2s ease; }.reaction-people button:hover,.reaction-people button.focused { background:rgba(98,230,255,.12); border-color:var(--top-cyan); }.reaction-people i { align-items:center; background:linear-gradient(145deg,var(--top-cyan),var(--top-violet)); border-radius:50%; color:#07101d; display:flex; font-family:var(--top-display); font-size:7px; font-style:normal; font-weight:800; height:21px; justify-content:center; overflow:hidden; width:21px; }.reaction-people i img { height:100%; object-fit:cover; width:100%; }.reaction-people span { font-size:9px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.reaction-people em { color:var(--top-cyan); font-family:var(--top-mono); font-size:7px; font-style:normal; } .comment-list li.focused { animation:comment-arrival 1.7s ease-in-out 2; border-left-color:var(--top-cyan); box-shadow:0 0 0 1px rgba(98,230,255,.26),0 0 28px rgba(98,230,255,.1); scroll-margin:35px; } @keyframes comment-arrival { 50% { transform:translateX(4px); } } @media (max-width:720px) { .reaction-row { gap:8px; }.reaction-people > div { gap:6px; }.reaction-people span { max-width:92px; }.reaction-people em { display:none; } }
 .comment-list li footer { align-items:center; display:flex; justify-content:space-between; }.comment-list .comment-reply { color:var(--top-lime); font-family:var(--top-mono); font-size:7px; }.comment-list .comment-reply:hover { color:var(--top-cyan); }.reply-context { align-items:center; background:rgba(156,124,255,.1); border-left:1px solid var(--top-violet); color:var(--top-muted); display:flex; font-family:var(--top-mono); font-size:8px; gap:5px; margin:0; padding:7px 8px; }.reply-context strong { color:var(--top-ink); font-weight:800; }.reply-context button { background:transparent; border:0; color:var(--top-cyan); cursor:pointer; font:inherit; margin-left:auto; padding:0; }
+.post-ownership { display:flex; justify-content:flex-end; margin-top:11px; }.post-ownership button,.quiet-action,.danger-action { background:transparent; border:1px solid rgba(126,156,255,.28); border-radius:999px; color:var(--top-muted); cursor:pointer; font-family:var(--top-mono); font-size:8px; padding:7px 10px; }.post-ownership button:hover,.quiet-action:hover { border-color:var(--top-cyan); color:var(--top-cyan); }.post-editor,.comment-editor { background:rgba(4,7,22,.56); border:1px solid rgba(98,230,255,.24); border-radius:15px 15px 4px 15px; display:grid; gap:11px; margin:16px 0; padding:14px; }.post-editor label { display:grid; gap:6px; }.post-editor label span { color:var(--top-cyan); font-family:var(--top-mono); font-size:7px; letter-spacing:.12em; }.post-editor input,.post-editor select,.post-editor textarea,.comment-editor textarea { background:rgba(3,5,17,.72); border:1px solid rgba(126,156,255,.3); border-radius:10px 10px 3px 10px; color:var(--top-ink); font:inherit; font-size:11px; outline:0; padding:10px; width:100%; }.post-editor textarea,.comment-editor textarea { min-height:100px; resize:vertical; }.post-editor input:focus,.post-editor select:focus,.post-editor textarea:focus,.comment-editor textarea:focus { border-color:var(--top-cyan); box-shadow:0 0 0 3px rgba(98,230,255,.1); }.post-editor footer,.comment-editor footer { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }.post-editor footer button,.comment-editor footer button { background:var(--top-lime); border:1px solid var(--top-lime); border-radius:999px; color:#07101d; cursor:pointer; font-family:var(--top-mono); font-size:8px; font-weight:900; padding:8px 11px; }.post-editor footer .quiet-action,.comment-editor footer .quiet-action { background:transparent; color:var(--top-muted); }.post-editor footer .danger-action { background:rgba(255,113,171,.09); border-color:rgba(255,113,171,.52); color:#ffb8d5; }.post-editor button:disabled,.comment-editor button:disabled { cursor:wait; opacity:.55; }.edited-marker { color:var(--top-muted); font-family:var(--top-mono); font-size:7px; }.comment-reply-item { margin-left:calc(var(--reply-depth) * 18px); position:relative; }.comment-reply-item::before { border-left:1px solid rgba(98,230,255,.35); border-bottom:1px solid rgba(98,230,255,.35); content:""; height:12px; left:-12px; position:absolute; top:0; width:8px; }.comment-actions { align-items:center; display:flex; gap:10px; }.comment-list .comment-delete { color:#ff9fc6; font-family:var(--top-mono); font-size:7px; }.comment-list .comment-delete:hover { color:var(--top-pink); }.comment-editor { margin:8px 0 0; }.comment-editor footer { margin:0; }.sr-only { height:1px; margin:-1px; overflow:hidden; padding:0; position:absolute; width:1px; clip:rect(0,0,0,0); white-space:nowrap; } @media (max-width:720px) { .post-editor footer,.comment-editor footer { justify-content:stretch; }.post-editor footer button,.comment-editor footer button { flex:1; }.comment-reply-item { margin-left:calc(var(--reply-depth) * 10px); }.comment-actions { gap:8px; } }
 </style>

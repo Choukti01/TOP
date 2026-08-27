@@ -309,8 +309,10 @@ export const postComments = pgTable("post_comments", {
   authorId: uuid("author_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  parentCommentId: uuid("parent_comment_id"),
   body: text("body").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
 
 export const connectionRequests = pgTable(

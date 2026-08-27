@@ -14,7 +14,8 @@ const postInput = z.object({
 }).strict();
 
 const reactionInput = z.object({ reaction: z.enum(["spark", "build", "help", "question", "respect"]) }).strict();
-const commentInput = z.object({ body: z.string().trim().min(1).max(1_000) }).strict();
+const commentInput = z.object({ body: z.string().trim().min(1).max(1_000), parentCommentId: z.string().uuid().nullable().optional() }).strict();
+const commentUpdateInput = z.object({ body: z.string().trim().min(1).max(1_000) }).strict();
 const responseInput = z.object({ response: z.enum(["accepted", "declined"]) }).strict();
 const searchInput = z.string().trim().min(2).max(80);
 const directMessageInput = z.object({ body: z.string().trim().min(1).max(2_000) }).strict();
@@ -61,6 +62,20 @@ export function createTopRouter(auth: AuthService, config: Pick<AppConfig, "data
     return response.status(200).json({ post });
   });
 
+  router.patch("/posts/:postId", async (request, response) => {
+    const parsed = postInput.safeParse(request.body);
+    if (!parsed.success) return response.status(422).json({ error: "Keep the signal clear: choose its kind, title, and useful details." });
+    const post = await publicTop.updatePost(currentUser(response).id, request.params.postId, parsed.data);
+    if (!post) return response.status(404).json({ error: "That signal cannot be changed. Only its author can edit it." });
+    return response.status(200).json({ post });
+  });
+
+  router.delete("/posts/:postId", async (request, response) => {
+    const deleted = await publicTop.deletePost(currentUser(response).id, request.params.postId);
+    if (!deleted) return response.status(404).json({ error: "That signal cannot be removed. Only its author can delete it." });
+    return response.status(204).send();
+  });
+
   router.post("/posts/:postId/reactions", async (request, response) => {
     const parsed = reactionInput.safeParse(request.body);
     if (!parsed.success) return response.status(422).json({ error: "Choose a meaningful response to this signal." });
@@ -72,9 +87,23 @@ export function createTopRouter(auth: AuthService, config: Pick<AppConfig, "data
   router.post("/posts/:postId/comments", async (request, response) => {
     const parsed = commentInput.safeParse(request.body);
     if (!parsed.success) return response.status(422).json({ error: "Write a real response before adding it." });
-    const comment = await publicTop.addComment(currentUser(response).id, request.params.postId, parsed.data.body);
-    if (!comment) return response.status(404).json({ error: "That shared signal is no longer available." });
+    const comment = await publicTop.addComment(currentUser(response).id, request.params.postId, { body: parsed.data.body, parentCommentId: parsed.data.parentCommentId ?? null });
+    if (!comment) return response.status(404).json({ error: "That shared signal or the response you chose is no longer available." });
     return response.status(201).json({ comment });
+  });
+
+  router.patch("/posts/:postId/comments/:commentId", async (request, response) => {
+    const parsed = commentUpdateInput.safeParse(request.body);
+    if (!parsed.success) return response.status(422).json({ error: "Write a real response before saving it." });
+    const comment = await publicTop.updateComment(currentUser(response).id, request.params.postId, request.params.commentId, parsed.data.body);
+    if (!comment) return response.status(404).json({ error: "That response cannot be changed. Only its author can edit it." });
+    return response.status(200).json({ comment });
+  });
+
+  router.delete("/posts/:postId/comments/:commentId", async (request, response) => {
+    const deleted = await publicTop.deleteComment(currentUser(response).id, request.params.postId, request.params.commentId);
+    if (!deleted) return response.status(404).json({ error: "That response cannot be removed. Only its author can delete it." });
+    return response.status(204).send();
   });
 
   router.post("/posts/:postId/seed", async (request, response) => {

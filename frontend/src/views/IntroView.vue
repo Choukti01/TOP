@@ -8,15 +8,15 @@
 
     <div class="content">
       <img class="hero-logo" :src="topLogoUrl" alt="TOP" />
-      <span class="eyebrow">A DIFFERENT RELATIONSHIP WITH TECHNOLOGY</span>
-      <h1>Make your real life<br /><em>more possible.</em></h1>
-      <p>TOP is a place to turn curiosity into craft, ideas into projects, and attention into a life that feels like yours.</p>
+      <span class="eyebrow">DON’T JUST BE ONLINE.</span>
+      <h1>Move something<br /><em>real.</em></h1>
+      <p>TOP is a field where a question becomes craft, a signal finds its circle, and an idea becomes work that leaves the world stronger than it found it.</p>
       <button class="enter" type="button" @click="enter">
-        <span>Enter the field</span><i aria-hidden="true">↗</i>
+        <span>Begin something real</span><i aria-hidden="true">↗</i>
       </button>
     </div>
 
-    <p class="edge-note">LESS SCROLLING<br />MORE BECOMING</p>
+    <p class="edge-note">LESS CONSUMPTION<br />MORE CREATION</p>
   </section>
 </template>
 

@@ -42,5 +42,19 @@ export function buildApp(config: AppConfig) {
   app.use("/api/v1/workspace", createWorkspaceRouter(auth, config));
   app.use("/api/v1/top", createTopRouter(auth, config));
 
+  // Keep production errors useful in Render logs without leaking database or
+  // implementation details to people using TOP.
+  app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
+    const failure = error instanceof Error ? error : new Error("Unknown non-Error exception");
+    const cause = "cause" in failure && failure.cause instanceof Error ? failure.cause : null;
+    console.error("Unhandled TOP API error", {
+      name: failure.name,
+      message: failure.message.split("\n")[0],
+      cause: cause ? { name: cause.name, message: cause.message } : null
+    });
+    if (response.headersSent) return;
+    response.status(500).json({ error: "TOP hit a server problem. Please try again in a moment." });
+  });
+
   return app;
 }

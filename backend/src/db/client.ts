@@ -9,7 +9,11 @@ export function createDatabase(config: Pick<AppConfig, "databaseUrl">) {
     throw new Error("DATABASE_URL is required for database-backed operations.");
   }
 
-  const client = postgres(config.databaseUrl, { max: 10 });
+  // Supabase's transaction pooler (and other PgBouncer-compatible providers)
+  // cannot keep PostgreSQL prepared statements pinned to one connection. Drizzle
+  // still parameterizes every query; disabling prepared statements here only
+  // makes those parameterized queries safe to run through a shared pool.
+  const client = postgres(config.databaseUrl, { max: 10, prepare: false });
 
   return {
     client,

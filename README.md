@@ -41,3 +41,5 @@ Idea → Action → Collaboration → Reflection → Growth
 ```
 
 The Three.js world visualizes genuine activity from the Web2 platform; it is never a replacement for real life.
+
+For the complete product vision, spaces, collaboration model, privacy boundaries, and current feature set, read [docs/product.md](docs/product.md).

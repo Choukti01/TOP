@@ -2,13 +2,13 @@
 
 ## What TOP is
 
-**TOP is a Web2 platform for people who want to move something real forward.**
+TOP is a Web2 platform for people who want to move something real forward.
 
 It helps a person turn an observation, question, offer, or idea into a clear next action; bring the right people together when help is needed; and leave a trace of what was actually made, learned, or improved.
 
 TOP is not built to keep people scrolling. It is built to help them return to real life with more clarity, more capability, and more momentum.
 
-> **Don't just be online. Move something real.**
+> Don't just be online. Move something real.
 
 Its practical loop is:
 
@@ -27,7 +27,7 @@ TOP takes a different position:
 - An idea should be able to become a real commitment.
 - A commitment should have a next action, not just a title.
 - Collaboration should be intentional and small enough to stay human.
-- Reputation should come from useful work, care, and follow-through—not follower counts.
+- Reputation should come from useful work, care, and follow-through, not follower counts.
 - Technology should protect attention instead of extracting it.
 
 The goal is not to make people feel important online. The goal is to help them become more capable, connected, creative, and useful offline.
@@ -36,8 +36,8 @@ The goal is not to make people feel important online. The goal is to help them b
 
 TOP gives people two connected spaces:
 
-1. A **public shared field** to discover people, ideas, questions, offers, and useful resources.
-2. A **private Field** where a person can think, make, plan, collaborate, and keep their real work moving.
+1. A public shared field to discover people, ideas, questions, offers, and useful resources.
+2. A private Field where a person can think, make, plan, collaborate, and keep their real work moving.
 
 The public space creates possibility. The private space protects focus.
 
@@ -45,16 +45,16 @@ The public space creates possibility. The private space protects focus.
 
 | Building block | Meaning in TOP | What it becomes |
 | --- | --- | --- |
-| **Signal** | A public idea, need, offer, question, resource, negotiation, event, or collaboration call. | A useful conversation or an origin for deeper work. |
-| **Seed** | A private early-stage commitment worth tending. | A project when it has enough clarity and intention. |
-| **Project** | A focused piece of work with purpose, a next action, milestones, and evidence. | A completed outcome and a legacy. |
-| **Evidence** | A note, decision, Atelier piece, Studio canvas, Blueprint, link, contribution, or review that shows movement. | A credible trail of real work. |
-| **Circle** | The small group around a project. | A human collaboration space, not a crowd. |
-| **Reflection** | A short review of what moved, what was learned, and what matters next. | Better judgment and more deliberate growth. |
+| Signal | A public idea, need, offer, question, resource, negotiation, event, or collaboration call. | A useful conversation or an origin for deeper work. |
+| Seed | A private early-stage commitment worth tending. | A project when it has enough clarity and intention. |
+| Project | A focused piece of work with purpose, a next action, milestones, and evidence. | A completed outcome and a legacy. |
+| Evidence | A note, decision, Atelier piece, Studio canvas, Blueprint, link, contribution, or review that shows movement. | A credible trail of real work. |
+| Circle | The small group around a project. | A human collaboration space, not a crowd. |
+| Reflection | A short review of what moved, what was learned, and what matters next. | Better judgment and more deliberate growth. |
 
 ## The public TOP Page
 
-The **TOP Page** is the platform's shared public field. It is not a traditional engagement feed.
+The TOP Page is the platform's shared public field. It is not a traditional engagement feed.
 
 Members can share a signal as an:
 
@@ -73,13 +73,13 @@ Each signal asks for a meaningful response. TOP's reactions are deliberately nam
 
 | Response | Meaning |
 | --- | --- |
-| **Spark** | “This opened something for me.” |
-| **Build** | “I would help make this real.” |
-| **Help** | “I can contribute.” |
-| **Ask** | “I have a useful question.” |
-| **Respect** | “This is thoughtful work.” |
+| Spark | “This opened something for me.” |
+| Build | “I would help make this real.” |
+| Help | “I can contribute.” |
+| Ask | “I have a useful question.” |
+| Respect | “This is thoughtful work.” |
 
-People can also add public responses, see who moved a signal, visit a member's public profile, or offer help, a skill, or collaboration. The goal is to make intention visible—not to manufacture empty popularity.
+People can also add public responses, see who moved a signal, visit a member's public profile, or offer help, a skill, or collaboration. The goal is to make intention visible, not to manufacture empty popularity.
 
 ### Discovery
 
@@ -118,7 +118,7 @@ Other members can offer help, a skill, or collaboration. The project owner decid
 
 ## The private Field
 
-The **Field** is a member's protected workspace. It is where private work happens and where projects have room to develop without becoming a public performance.
+The Field is a member's protected workspace. It is where private work happens and where projects have room to develop without becoming a public performance.
 
 It includes:
 
@@ -136,14 +136,14 @@ Every project is meant to have a real home, not just a card with a percentage.
 
 Its command center brings together:
 
-- **Mission:** why the project exists
-- **Outcome:** what it is trying to make possible
-- **Next action:** the smallest meaningful move to make now
-- **Milestones:** visible progress from planned to completed
-- **Evidence trail:** work created in tools, notes, links, contributions, and reviews
-- **Activity timeline:** a record of movement in the project
-- **Circle:** collaborators, invitations, roles, and conversation
-- **Weekly reflection:** what moved forward, what was learned, and what comes next
+- Mission: why the project exists
+- Outcome: what it is trying to make possible
+- Next action: the smallest meaningful move to make now
+- Milestones: visible progress from planned to completed
+- Evidence trail: work created in tools, notes, links, contributions, and reviews
+- Activity timeline: a record of movement in the project
+- Circle: collaborators, invitations, roles, and conversation
+- Weekly reflection: what moved forward, what was learned, and what comes next
 
 When a project is complete, its history becomes a legacy rather than disappearing into a timeline.
 
@@ -190,7 +190,7 @@ The owner sees their own overview, identity, Field, Signals, Messages, and accou
 
 Connections are mutual. A person sends an invitation, the recipient accepts or declines it in Signals, and only accepted connections can use direct messages. This avoids an open, noisy inbox and keeps conversations intentional.
 
-Project invitations, offers, and public responses appear in **Signals**. Direct conversations belong in **Messages**, not mixed into general notifications.
+Project invitations, offers, and public responses appear in Signals. Direct conversations belong in Messages, not mixed into general notifications.
 
 ## Trust, privacy, and boundaries
 
@@ -219,17 +219,17 @@ TOP is intentionally not organized around likes, watch time, or follower growth.
 - Ideas moved into real action
 - Reflections kept
 
-The principle is simple: **digital activity should strengthen a person's real life, not replace it.**
+The principle is simple: digital activity should strengthen a person's real life, not replace it.
 
 ## Design principles
 
 Every product decision should pass these tests:
 
-1. **Does this help someone move something real forward?**
-2. **Does this protect attention rather than exploit it?**
-3. **Does it reward contribution, craft, care, or learning?**
-4. **Does it leave room for beginners as well as experts?**
-5. **Does it make the private work of becoming easier—not more performative?**
+1. Does this help someone move something real forward?
+2. Does this protect attention rather than exploit it?
+3. Does it reward contribution, craft, care, or learning?
+4. Does it leave room for beginners as well as experts?
+5. Does it make the private work of becoming easier, not more performative?
 
 This is why TOP favours projects over posts, circles over crowds, evidence over vanity metrics, and reflection over endless reaction.
 
@@ -286,4 +286,4 @@ We believe attention is precious and should never be exploited.
 
 We believe success is not how long a person stays online, but how much they grow because they were here.
 
-**TOP is not an escape from reality. It is a bridge for improving it.**
+TOP is not an escape from reality. It is a bridge for improving it.

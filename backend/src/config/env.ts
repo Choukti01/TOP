@@ -8,6 +8,11 @@ export interface AppConfig {
   databaseUrl?: string;
   databaseEnabled?: boolean;
   sessionSecret?: string;
+  accountActionSecret?: string;
+  publicAppUrl?: string;
+  resendApiKey?: string;
+  emailFrom?: string;
+  errorWebhookUrl?: string;
 }
 
 function parsePort(value: string | undefined): number {
@@ -40,6 +45,13 @@ export function loadConfig(env = process.env): AppConfig {
     webOrigin: env.WEB_ORIGIN ?? "http://localhost:5173",
     databaseUrl: env.DATABASE_URL,
     databaseEnabled: env.DATABASE_ENABLED === "true",
-    sessionSecret: env.SESSION_SECRET
+    sessionSecret: env.SESSION_SECRET,
+    // This is deliberately separate from WEB_ORIGIN. WEB_ORIGIN governs CORS;
+    // PUBLIC_APP_URL is the safe, canonical destination for account-action links.
+    publicAppUrl: env.PUBLIC_APP_URL ?? env.WEB_ORIGIN ?? "http://localhost:5173",
+    accountActionSecret: env.ACCOUNT_ACTION_SECRET,
+    resendApiKey: env.RESEND_API_KEY,
+    emailFrom: env.EMAIL_FROM,
+    errorWebhookUrl: env.ERROR_WEBHOOK_URL
   };
 }

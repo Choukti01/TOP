@@ -10,7 +10,11 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
-const props = withDefaults(defineProps<{ mode?: string; pulse?: number }>(), { mode: "workspace", pulse: 0 });
+const props = withDefaults(defineProps<{ mode?: string; pulse?: number; drift?: { x: number; y: number } }>(), {
+  mode: "workspace",
+  pulse: 0,
+  drift: () => ({ x: 0, y: 0 })
+});
 
 const host = ref<HTMLElement>();
 let renderer: THREE.WebGLRenderer | undefined;
@@ -29,6 +33,8 @@ let targetRotation = 0;
 let targetTilt = 0;
 let targetDistance = 12;
 let targetCoreScale = 1;
+let targetFieldX = 0;
+let targetFieldY = 0;
 let targetColor = new THREE.Color("#62e6ff");
 let currentColor = new THREE.Color("#62e6ff");
 let reduceMotion = false;
@@ -56,6 +62,11 @@ function applyMode(mode: string): void {
   targetTilt = next.tilt;
   targetDistance = next.distance;
   targetCoreScale = next.scale;
+}
+
+function applyDrift(drift: { x: number; y: number }): void {
+  targetFieldX = THREE.MathUtils.clamp(drift.x, -1, 1) * .52;
+  targetFieldY = THREE.MathUtils.clamp(drift.y, -1, 1) * -.24;
 }
 
 function makeOrbit(radius: number, verticalRadius: number, rotation: [number, number, number], color: string, opacity: number): THREE.LineLoop {
@@ -176,6 +187,10 @@ function animate(): void {
   const ease = reduceMotion ? 1 : .035;
   field.rotation.y = THREE.MathUtils.lerp(field.rotation.y, targetRotation, ease);
   field.rotation.x = THREE.MathUtils.lerp(field.rotation.x, targetTilt - .22, ease);
+  field.position.x = THREE.MathUtils.lerp(field.position.x, targetFieldX, ease);
+  field.position.y = THREE.MathUtils.lerp(field.position.y, targetFieldY, ease);
+  camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetFieldX * -.26, ease);
+  camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1.2 + targetFieldY * -.22, ease);
   camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetDistance, ease);
   core.scale.lerp(new THREE.Vector3(targetCoreScale, targetCoreScale, targetCoreScale), ease);
   currentColor.lerp(targetColor, ease);
@@ -227,6 +242,7 @@ function dispose(): void {
 
 watch(() => props.mode, applyMode);
 watch(() => props.pulse, () => { energy = reduceMotion ? 0 : 1; });
+watch(() => props.drift, applyDrift, { deep: true });
 onMounted(mount);
 onUnmounted(dispose);
 </script>

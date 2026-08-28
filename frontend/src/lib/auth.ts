@@ -4,6 +4,7 @@ import {
   getTopSession,
   loginTopAccount,
   logoutTopAccount,
+  confirmTopEmail,
   registerTopAccount,
   updateTopProfile,
   type AuthUser
@@ -52,6 +53,15 @@ export async function createTopAccount(input: { email: string; displayName: stri
   authState.user = user;
   authState.status = "authenticated";
   saveTopAvatar(user.avatarDataUrl);
+  return user;
+}
+
+export async function verifyTopEmail(token: string): Promise<AuthUser> {
+  const { user } = await confirmTopEmail(token);
+  if (authState.user?.id === user.id) {
+    authState.user = user;
+    authState.status = "authenticated";
+  }
   return user;
 }
 

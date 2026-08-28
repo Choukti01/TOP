@@ -12,6 +12,7 @@ export interface ApiHealth {
 export interface AuthUser {
   id: string;
   email: string;
+  emailVerified: boolean;
   displayName: string;
   biography: string | null;
   location: string | null;
@@ -80,6 +81,9 @@ export interface PublicSearchResults {
   people: PublicSearchPerson[];
   posts: PublicPost[];
 }
+
+export type SafetyReportTarget = "person" | "post" | "comment" | "message";
+export type SafetyReportReason = "spam" | "harassment" | "hate" | "sexual-content" | "privacy" | "self-harm" | "other";
 
 export interface ConnectionRequest {
   id: string;
@@ -373,8 +377,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return response.json() as Promise<T>;
 }
 
-export function registerTopAccount(input: { email: string; displayName: string; password: string }): Promise<{ user: AuthUser }> {
-  return request<{ user: AuthUser }>("/api/v1/auth/register", { method: "POST", body: input });
+export interface AccountActionResponse { message: string; developmentActionUrl?: string; }
+
+export function registerTopAccount(input: { email: string; displayName: string; password: string }): Promise<{ user: AuthUser; message: string; developmentActionUrl?: string }> {
+  return request<{ user: AuthUser; message: string; developmentActionUrl?: string }>("/api/v1/auth/register", { method: "POST", body: input });
 }
 
 export function loginTopAccount(input: { email: string; password: string }): Promise<{ user: AuthUser }> {
@@ -391,6 +397,22 @@ export function logoutTopAccount(): Promise<void> {
 
 export function updateTopProfile(input: { displayName?: string; biography?: string | null; location?: string | null; fieldName?: string | null; avatarDataUrl?: string | null }): Promise<{ user: AuthUser }> {
   return request<{ user: AuthUser }>("/api/v1/auth/profile", { method: "PATCH", body: input });
+}
+
+export function confirmTopEmail(token: string): Promise<{ user: AuthUser; message: string }> {
+  return request<{ user: AuthUser; message: string }>("/api/v1/auth/email-verification/confirm", { method: "POST", body: { token } });
+}
+
+export function resendTopEmailVerification(): Promise<AccountActionResponse> {
+  return request<AccountActionResponse>("/api/v1/auth/email-verification/resend", { method: "POST" });
+}
+
+export function requestTopPasswordReset(email: string): Promise<AccountActionResponse> {
+  return request<AccountActionResponse>("/api/v1/auth/password-reset/request", { method: "POST", body: { email } });
+}
+
+export function resetTopPassword(token: string, password: string): Promise<AccountActionResponse> {
+  return request<AccountActionResponse>("/api/v1/auth/password-reset/confirm", { method: "POST", body: { token, password } });
 }
 
 export function getApiHealth(): Promise<ApiHealth> {
@@ -459,6 +481,22 @@ export function respondToSignalOffer(offerId: string, input: { response: "accept
 
 export function getPublicProfile(personId: string): Promise<{ profile: PublicProfile }> {
   return request<{ profile: PublicProfile }>(`/api/v1/top/people/${encodeURIComponent(personId)}`);
+}
+
+export function blockTopPerson(personId: string): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/v1/top/people/${encodeURIComponent(personId)}/block`, { method: "POST" });
+}
+
+export function unblockTopPerson(personId: string): Promise<void> {
+  return request<void>(`/api/v1/top/people/${encodeURIComponent(personId)}/block`, { method: "DELETE" });
+}
+
+export function getBlockedTopPeople(): Promise<{ people: PublicPersonSummary[] }> {
+  return request<{ people: PublicPersonSummary[] }>("/api/v1/top/blocked");
+}
+
+export function reportTopSafety(input: { targetType: SafetyReportTarget; targetId: string; reason: SafetyReportReason; note?: string | null }): Promise<{ message: string }> {
+  return request<{ message: string }>("/api/v1/top/reports", { method: "POST", body: input });
 }
 
 export function sendConnectionRequest(personId: string): Promise<{ message: string }> {

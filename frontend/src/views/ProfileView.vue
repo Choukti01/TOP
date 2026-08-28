@@ -39,7 +39,7 @@
         <div v-else-if="activePanel === 'messages'" class="profile-signals"><DirectMessagesInbox /></div>
 
         <section v-else class="profile-account">
-          <h2>Your account, kept quiet.</h2><p>TOP does not sell your attention or make your profile public by default.</p><div class="account-row"><span>EMAIL</span><strong>{{ authState.user?.email }}</strong></div><div class="account-row"><span>SESSION</span><strong>Secure on this browser</strong></div><div class="account-row"><span>PUBLIC PROFILE</span><strong>Only deliberate basics</strong></div><div class="account-note"><i>✓</i><p>Your projects, evidence, project circles, messages, and Field tools remain private. The TOP Page is a separate public layer.</p></div><div class="profile-actions"><button class="profile-save" type="button" @click="router.push('/top')">Open TOP Page <span>↗</span></button><button class="profile-leave" type="button" @click="signOut">Sign out securely</button></div></section>
+          <h2>Your account, kept quiet.</h2><p>TOP does not sell your attention or make your profile public by default.</p><div class="account-row"><span>EMAIL</span><strong>{{ authState.user?.email }}</strong></div><div class="account-row"><span>EMAIL STATUS</span><strong :class="{ 'account-verified': authState.user?.emailVerified }">{{ authState.user?.emailVerified ? 'Verified' : 'Verification needed' }}</strong></div><div class="account-row"><span>SESSION</span><strong>Secure on this browser</strong></div><div class="account-row"><span>PUBLIC PROFILE</span><strong>Only deliberate basics</strong></div><section class="blocked-list"><span>BLOCKED PEOPLE</span><p v-if="blockedPeople.length === 0">No one is blocked. Your TOP field is quiet.</p><ul v-else><li v-for="person in blockedPeople" :key="person.id"><strong>{{ person.displayName }}</strong><button type="button" @click="unblockPerson(person.id)">Unblock</button></li></ul></section><p v-if="accountMessage" :class="{ error: accountError }" class="profile-message">{{ accountMessage }}</p><div class="account-note"><i>✓</i><p>Your projects, evidence, project circles, messages, and Field tools remain private. The TOP Page is a separate public layer.</p></div><div class="profile-actions"><button v-if="!authState.user?.emailVerified" class="profile-save" type="button" :disabled="sendingVerification" @click="sendVerification">{{ sendingVerification ? 'Sending…' : 'Send verification email' }} <span>↗</span></button><button v-else class="profile-save" type="button" @click="router.push('/top')">Open TOP Page <span>↗</span></button><button class="profile-leave" type="button" @click="signOut">Sign out securely</button></div></section>
       </section>
     </main>
   </section>
@@ -54,7 +54,7 @@ import CollaborationInbox from "../components/workspace/CollaborationInbox.vue";
 import DirectMessagesInbox from "../components/workspace/DirectMessagesInbox.vue";
 import { authState, leaveTop, profileVisualState, refineTopProfile, saveTopAvatar } from "../lib/auth";
 import { topLogoUrl } from "../lib/brand";
-import { getDirectConversations, getPersonalDashboard, getTopNotifications, subscribeToTopSignals, type PersonalDashboard } from "../lib/api";
+import { getBlockedTopPeople, getDirectConversations, getPersonalDashboard, getTopNotifications, resendTopEmailVerification, subscribeToTopSignals, unblockTopPerson, type PersonalDashboard, type PublicPersonSummary } from "../lib/api";
 
 const router = useRouter();
 const route = useRoute();
@@ -73,6 +73,10 @@ const dashboard = ref<PersonalDashboard | null>(null);
 const avatarInput = ref<HTMLInputElement>();
 const unreadSignals = ref(0);
 const unreadMessages = ref(0);
+const sendingVerification = ref(false);
+const accountMessage = ref("");
+const accountError = ref(false);
+const blockedPeople = ref<PublicPersonSummary[]>([]);
 const panels = computed(() => [
   { id: "overview" as const, label: "Overview", mark: "◌" },
   { id: "identity" as const, label: "Identity", mark: "✦" },
@@ -105,7 +109,7 @@ try {
   fieldIntention.value = localStorage.getItem("top-field-intention") ?? "";
 } catch { /* Private browser settings may block local storage. */ }
 
-onMounted(() => { void loadDashboard(); void loadUnreadSignals(); void loadUnreadMessages(); });
+onMounted(() => { void loadDashboard(); void loadUnreadSignals(); void loadUnreadMessages(); void loadBlockedPeople(); });
 const stopLiveSignals = subscribeToTopSignals(() => { void loadUnreadSignals(); void loadUnreadMessages(); });
 onUnmounted(stopLiveSignals);
 
@@ -124,6 +128,36 @@ async function save(): Promise<void> {
 }
 
 async function signOut(): Promise<void> { await leaveTop(); await router.replace("/"); }
+
+async function sendVerification(): Promise<void> {
+  sendingVerification.value = true;
+  accountMessage.value = "";
+  try {
+    const result = await resendTopEmailVerification();
+    accountError.value = false;
+    accountMessage.value = result.message;
+  } catch (reason) {
+    accountError.value = true;
+    accountMessage.value = reason instanceof Error ? reason.message : "TOP could not send a verification link right now.";
+  } finally { sendingVerification.value = false; }
+}
+
+async function loadBlockedPeople(): Promise<void> {
+  try { blockedPeople.value = (await getBlockedTopPeople()).people; } catch { blockedPeople.value = []; }
+}
+
+async function unblockPerson(personId: string): Promise<void> {
+  accountMessage.value = "";
+  try {
+    await unblockTopPerson(personId);
+    blockedPeople.value = blockedPeople.value.filter((person) => person.id !== personId);
+    accountError.value = false;
+    accountMessage.value = "This person can find your public field again.";
+  } catch (reason) {
+    accountError.value = true;
+    accountMessage.value = reason instanceof Error ? reason.message : "TOP could not change this block right now.";
+  }
+}
 
 async function loadDashboard(): Promise<void> {
   try { dashboard.value = await getPersonalDashboard(); } catch { dashboard.value = null; }
@@ -217,4 +251,5 @@ async function saveField(): Promise<void> {
 .avatar-input { display:none; }.profile-portrait { cursor:pointer; padding:0; }.profile-portrait img { height:100%; object-fit:cover; position:absolute; width:100%; }.profile-portrait b { background:rgba(4,8,24,.68); bottom:7px; border:1px solid rgba(255,255,255,.18); border-radius:999px; color:var(--top-ink); font-family:var(--top-mono); font-size:7px; font-weight:700; opacity:0; padding:4px 7px; position:absolute; transition:.2s ease; z-index:2; }.profile-portrait:hover b,.profile-portrait:focus-visible b { opacity:1; }.profile-stats { display:grid; gap:1px; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:hidden; border:1px solid rgba(126,158,255,.16); border-radius:16px 16px 5px 16px; }.profile-stats div { background:rgba(3,5,17,.34); min-height:81px; padding:12px; }.profile-stats div + div { border-left:1px solid rgba(126,158,255,.16); }.profile-stats strong { display:block; font-family:var(--top-display); font-size:30px; font-weight:700; letter-spacing:-.07em; }.profile-stats span { color:var(--top-muted); display:block; font-size:9px; line-height:1.35; margin-top:4px; }.profile-record { border-top:1px solid rgba(126,158,255,.16); margin-top:2px; padding-top:16px; }.record-heading { align-items:center; display:flex; justify-content:space-between; }.record-heading span { color:var(--top-cyan); font-family:var(--top-mono); font-size:8px; font-weight:800; letter-spacing:.12em; }.record-heading button { background:transparent; border:0; color:var(--top-cyan); cursor:pointer; font-family:var(--top-mono); font-size:8px; }.profile-record ul { display:grid; gap:10px; list-style:none; margin:14px 0 0; padding:0; }.profile-record li { align-items:flex-start; background:rgba(3,5,17,.34); border-left:1px solid var(--top-violet); display:flex; gap:10px; padding:10px; }.profile-record li > i { background:var(--top-lime); border-radius:50%; box-shadow:0 0 9px rgba(156,236,153,.6); flex:0 0 auto; height:6px; margin-top:5px; width:6px; }.profile-record li > i.activity-mark { background:var(--top-cyan); box-shadow:0 0 9px rgba(98,230,255,.6); }.profile-record small,.profile-record strong,.profile-record em { display:block; }.profile-record small { color:var(--top-muted); font-family:var(--top-mono); font-size:8px; }.profile-record strong { color:rgba(235,241,255,.9); font-size:11px; line-height:1.45; margin-top:4px; }.profile-record em { color:var(--top-muted); font-size:10px; font-style:normal; line-height:1.45; margin-top:3px; }.record-empty { color:var(--top-muted); font-size:11px; line-height:1.6; margin:14px 0 0; } @media (max-width:500px) { .profile-stats { grid-template-columns:1fr; }.profile-stats div + div { border-left:0; border-top:1px solid rgba(126,158,255,.16); } }
 .commitment-link { align-items:flex-start; background:transparent; border:0; color:inherit; cursor:pointer; display:grid; gap:10px; grid-template-columns:6px minmax(0,1fr) auto; padding:0; text-align:left; width:100%; }.commitment-link > i { background:var(--top-lime); border-radius:50%; box-shadow:0 0 9px rgba(156,236,153,.6); height:6px; margin-top:5px; width:6px; }.commitment-link > em { color:var(--top-cyan); font-size:14px; margin-top:4px; opacity:.6; transition:.2s ease; }.profile-record li:has(.commitment-link) { padding:10px; transition:.2s ease; }.profile-record li:has(.commitment-link):hover { background:rgba(98,230,255,.08); border-left-color:var(--top-cyan); }.profile-record li:has(.commitment-link):hover .commitment-link > em { opacity:1; transform:translate(2px,-2px); }
 .field-console { background:linear-gradient(145deg,rgba(3,7,23,.56),rgba(19,31,76,.48)); border:1px solid rgba(98,230,255,.23); border-radius:17px 17px 5px 17px; display:grid; gap:12px; overflow:hidden; padding:15px; }.field-console-heading { align-items:center; display:flex; justify-content:space-between; }.field-console-heading span { color:var(--top-cyan); font-family:var(--top-mono); font-size:8px; font-weight:800; letter-spacing:.12em; }.field-console-heading strong { color:var(--top-lime); font-family:var(--top-mono); font-size:8px; font-weight:700; }.field-console > p { color:var(--top-muted); font-size:11px; line-height:1.55; margin:0; }.field-console ul { display:grid; gap:7px; list-style:none; margin:0; padding:0; }.field-console li { border:1px solid rgba(126,158,255,.13); border-radius:11px 11px 3px 11px; overflow:hidden; }.field-console li button { align-items:flex-start; background:rgba(3,5,17,.3); border:0; color:inherit; cursor:pointer; display:grid; gap:9px; grid-template-columns:6px minmax(0,1fr) auto; padding:11px; text-align:left; width:100%; }.field-console li button:hover { background:rgba(98,230,255,.07); }.field-console li i { background:var(--top-lime); border-radius:50%; box-shadow:0 0 10px rgba(156,236,153,.5); height:6px; margin-top:5px; width:6px; }.field-console li small,.field-console li strong,.field-console li em { display:block; }.field-console li small { color:var(--top-cyan); font-family:var(--top-mono); font-size:7px; letter-spacing:.08em; text-transform:uppercase; }.field-console li strong { color:var(--top-ink); font-size:11px; margin-top:4px; }.field-console li em { color:var(--top-muted); font-size:9px; font-style:normal; line-height:1.45; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.field-console li > button > span { color:var(--top-cyan); font-size:13px; }.field-console-open { background:transparent; border:1px solid rgba(98,230,255,.38); border-radius:999px; color:var(--top-cyan); cursor:pointer; font-family:var(--top-mono); font-size:8px; justify-self:start; padding:9px 11px; }.field-console-open span { font-size:12px; }.profile-signals { min-width:0; }.profile-signals :deep(.signals) { grid-column:auto; }.profile-signals :deep(.signals-hero),.profile-signals :deep(.signal-panel),.profile-signals :deep(.messages-hero),.profile-signals :deep(.messages-layout) { border-radius:17px 17px 5px 17px; padding:21px; }.profile-signals :deep(.signals-hero),.profile-signals :deep(.messages-hero) { align-items:flex-start; flex-direction:column; }.profile-signals :deep(.signals-hero h2),.profile-signals :deep(.messages-hero h2) { font-size:34px; }.profile-signals :deep(.signals-hero button),.profile-signals :deep(.messages-hero button) { width:100%; }
+.account-verified { color:var(--top-lime)!important; }.blocked-list { border-top:1px solid rgba(126,158,255,.16); display:grid; gap:9px; padding-top:13px; }.blocked-list > span { color:var(--top-cyan); font-family:var(--top-mono); font-size:8px; letter-spacing:.11em; }.blocked-list > p { color:var(--top-muted); font-size:10px; line-height:1.5; margin:0; }.blocked-list ul { display:grid; gap:7px; list-style:none; margin:0; padding:0; }.blocked-list li { align-items:center; background:rgba(3,5,17,.34); display:flex; justify-content:space-between; padding:9px 10px; }.blocked-list li strong { color:var(--top-ink); font-size:10px; font-weight:600; }.blocked-list button { background:transparent; border:1px solid rgba(255,113,171,.45); border-radius:999px; color:#ffd1e3; cursor:pointer; font-family:var(--top-mono); font-size:8px; padding:6px 8px; }
 </style>

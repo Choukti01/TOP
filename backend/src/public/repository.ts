@@ -2,7 +2,7 @@ import { and, asc, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 
 import type { AppConfig } from "../config/env.js";
 import { createDatabase } from "../db/client.js";
-import { connectionRequests, directMessages, notifications, postComments, postReactions, profiles, projectActivity, projectArtifacts, projectMembers, projectMilestones, projects, publicPostOffers, publicPosts, seedNotes, seeds, users } from "../db/schema.js";
+import { connectionRequests, directMessages, notifications, postComments, postReactions, profiles, projectActivity, projectArtifacts, projectMembers, projectMilestones, projects, publicPostOffers, publicPosts, safetyReports, seedNotes, seeds, userBlocks, users } from "../db/schema.js";
 import { notificationHub } from "../realtime/notificationHub.js";
 
 export type PublicPostKind = "idea" | "signal" | "offer" | "question" | "negotiation" | "request" | "resource" | "milestone" | "event" | "collaboration";
@@ -22,6 +22,8 @@ export interface DirectConversation { person: PublicPersonSummary; lastMessage: 
 export interface SignalOffer { id: string; postId: string; postTitle: string; projectId: string | null; kind: SignalOfferKind; note: string; createdAt: string; sender: PublicPersonSummary; }
 export interface PublicSearchPerson extends PublicPersonSummary { connectionStatus: PublicProfile["connectionStatus"]; }
 export interface PublicSearchResults { people: PublicSearchPerson[]; posts: PublicPost[]; }
+export type SafetyReportTarget = "person" | "post" | "comment" | "message";
+export type SafetyReportReason = "spam" | "harassment" | "hate" | "sexual-content" | "privacy" | "self-harm" | "other";
 
 export interface PublicRepository {
   getFeed(viewerId: string): Promise<PublicPost[]>;
@@ -46,6 +48,10 @@ export interface PublicRepository {
   createSignalOffer(userId: string, postId: string, input: { kind: SignalOfferKind; note: string }): Promise<PublicPost | null>;
   getIncomingSignalOffers(userId: string): Promise<SignalOffer[]>;
   respondToSignalOffer(userId: string, offerId: string, response: "accepted" | "declined", role: "contributor" | "mentor"): Promise<{ projectId: string | null } | null>;
+  blockPerson(userId: string, personId: string): Promise<PublicPersonSummary | null>;
+  unblockPerson(userId: string, personId: string): Promise<boolean>;
+  listBlockedPeople(userId: string): Promise<PublicPersonSummary[]>;
+  createSafetyReport(userId: string, input: { targetType: SafetyReportTarget; targetId: string; reason: SafetyReportReason; note: string | null }): Promise<boolean>;
 }
 
 const reactions: PublicReaction[] = ["spark", "build", "help", "question", "respect"];
@@ -54,6 +60,7 @@ const projectColors = ["#dfae63", "#cc7b5b", "#9eb488", "#d4a46f", "#d78397", "#
 export function createPublicRepository(config: Pick<AppConfig, "databaseUrl" | "databaseEnabled">): PublicRepository { return config.databaseEnabled && config.databaseUrl ? new PostgreSqlPublicRepository(config) : new MemoryPublicRepository(); }
 
 class MemoryPublicRepository implements PublicRepository {
+  private readonly blocks = new Map<string, Set<string>>();
   public async getFeed(_viewerId: string) { return []; }
   public async getPost(_viewerId: string, _postId: string): Promise<PublicPost | null> { return null; }
   public async search(_viewerId: string, _query: string): Promise<PublicSearchResults> { return { people: [], posts: [] }; }
@@ -76,6 +83,10 @@ class MemoryPublicRepository implements PublicRepository {
   public async createSignalOffer(_userId: string, _postId: string, _input: { kind: SignalOfferKind; note: string }): Promise<PublicPost | null> { return null; }
   public async getIncomingSignalOffers(_userId: string): Promise<SignalOffer[]> { return []; }
   public async respondToSignalOffer(_userId: string, _offerId: string, _response: "accepted" | "declined", _role: "contributor" | "mentor"): Promise<{ projectId: string | null } | null> { return null; }
+  public async blockPerson(userId: string, personId: string): Promise<PublicPersonSummary | null> { if (userId === personId) return null; const current = this.blocks.get(userId) ?? new Set<string>(); current.add(personId); this.blocks.set(userId, current); return { id: personId, displayName: "TOP member", fieldName: null, location: null, avatarDataUrl: null, memberSince: new Date().toISOString() }; }
+  public async unblockPerson(userId: string, personId: string): Promise<boolean> { return this.blocks.get(userId)?.delete(personId) ?? false; }
+  public async listBlockedPeople(_userId: string): Promise<PublicPersonSummary[]> { return []; }
+  public async createSafetyReport(_userId: string, _input: { targetType: SafetyReportTarget; targetId: string; reason: SafetyReportReason; note: string | null }): Promise<boolean> { return false; }
 }
 
 class PostgreSqlPublicRepository implements PublicRepository {
@@ -84,7 +95,8 @@ class PostgreSqlPublicRepository implements PublicRepository {
 
   public async getFeed(viewerId: string): Promise<PublicPost[]> {
     const rows = await this.database.select({ post: publicPosts, authorId: users.id, displayName: profiles.displayName, fieldName: profiles.fieldName, location: profiles.location, avatarDataUrl: profiles.avatarDataUrl, memberSince: users.createdAt }).from(publicPosts).innerJoin(users, eq(users.id, publicPosts.authorId)).leftJoin(profiles, eq(profiles.userId, users.id)).orderBy(desc(publicPosts.createdAt)).limit(40);
-    return this.hydratePosts(viewerId, rows);
+    const hidden = await this.hiddenPersonIds(viewerId, rows.map((row) => row.authorId));
+    return this.hydratePosts(viewerId, rows.filter((row) => !hidden.has(row.authorId)));
   }
 
   public async search(viewerId: string, query: string): Promise<PublicSearchResults> {
@@ -103,8 +115,9 @@ class PostgreSqlPublicRepository implements PublicRepository {
         .orderBy(desc(publicPosts.createdAt))
         .limit(18)
     ]);
-    const people = await this.withConnectionStatus(viewerId, peopleRows);
-    return { people, posts: await this.hydratePosts(viewerId, postRows) };
+    const hidden = await this.hiddenPersonIds(viewerId, [...peopleRows.map((person) => person.id), ...postRows.map((row) => row.authorId)]);
+    const people = await this.withConnectionStatus(viewerId, peopleRows.filter((person) => !hidden.has(person.id)));
+    return { people, posts: await this.hydratePosts(viewerId, postRows.filter((row) => !hidden.has(row.authorId))) };
   }
 
   public async createPost(userId: string, input: { kind: PublicPostKind; title: string; body: string }): Promise<PublicPost> {
@@ -132,8 +145,8 @@ class PostgreSqlPublicRepository implements PublicRepository {
   }
 
   public async createSeedFromPost(userId: string, postId: string): Promise<{ seedId: string; post: PublicPost } | null> {
-    const [post] = await this.database.select({ id: publicPosts.id, title: publicPosts.title, body: publicPosts.body }).from(publicPosts).where(eq(publicPosts.id, postId));
-    if (!post) return null;
+    const [post] = await this.database.select({ id: publicPosts.id, authorId: publicPosts.authorId, title: publicPosts.title, body: publicPosts.body }).from(publicPosts).where(eq(publicPosts.id, postId));
+    if (!post || await this.isBlockedBetween(userId, post.authorId)) return null;
     const [existing] = await this.database.select({ id: seeds.id }).from(seeds).where(and(eq(seeds.creatorId, userId), eq(seeds.sourcePublicPostId, postId)));
     const now = new Date();
     const seedId = existing?.id ?? (await this.database.insert(seeds).values({
@@ -197,7 +210,7 @@ class PostgreSqlPublicRepository implements PublicRepository {
 
   public async createSignalOffer(userId: string, postId: string, input: { kind: SignalOfferKind; note: string }): Promise<PublicPost | null> {
     const [post] = await this.database.select({ id: publicPosts.id, authorId: publicPosts.authorId, title: publicPosts.title }).from(publicPosts).where(eq(publicPosts.id, postId));
-    if (!post || post.authorId === userId) return null;
+    if (!post || post.authorId === userId || await this.isBlockedBetween(userId, post.authorId)) return null;
     const now = new Date();
     await this.database.insert(publicPostOffers).values({ postId, userId, kind: input.kind, note: input.note, status: "pending", createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: [publicPostOffers.postId, publicPostOffers.userId], set: { kind: input.kind, note: input.note, status: "pending", updatedAt: now } });
     const person = await this.personSummary(userId);
@@ -207,12 +220,13 @@ class PostgreSqlPublicRepository implements PublicRepository {
 
   public async getIncomingSignalOffers(userId: string): Promise<SignalOffer[]> {
     const rows = await this.database.select({ offer: publicPostOffers, postTitle: publicPosts.title, projectId: publicPosts.projectId, senderId: users.id, displayName: profiles.displayName, fieldName: profiles.fieldName, location: profiles.location, avatarDataUrl: profiles.avatarDataUrl, memberSince: users.createdAt }).from(publicPostOffers).innerJoin(publicPosts, eq(publicPosts.id, publicPostOffers.postId)).innerJoin(users, eq(users.id, publicPostOffers.userId)).leftJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(publicPosts.authorId, userId), eq(publicPostOffers.status, "pending"))).orderBy(desc(publicPostOffers.createdAt));
-    return rows.map(({ offer, postTitle, projectId, senderId, displayName, fieldName, location, avatarDataUrl, memberSince }) => ({ id: offer.id, postId: offer.postId, postTitle, projectId, kind: offer.kind as SignalOfferKind, note: offer.note, createdAt: iso(offer.createdAt), sender: { id: senderId, displayName: displayName ?? "TOP member", fieldName, location, avatarDataUrl, memberSince: iso(memberSince) } }));
+    const hidden = await this.hiddenPersonIds(userId, rows.map((row) => row.senderId));
+    return rows.filter((row) => !hidden.has(row.senderId)).map(({ offer, postTitle, projectId, senderId, displayName, fieldName, location, avatarDataUrl, memberSince }) => ({ id: offer.id, postId: offer.postId, postTitle, projectId, kind: offer.kind as SignalOfferKind, note: offer.note, createdAt: iso(offer.createdAt), sender: { id: senderId, displayName: displayName ?? "TOP member", fieldName, location, avatarDataUrl, memberSince: iso(memberSince) } }));
   }
 
   public async respondToSignalOffer(userId: string, offerId: string, response: "accepted" | "declined", role: "contributor" | "mentor"): Promise<{ projectId: string | null } | null> {
     const [record] = await this.database.select({ offer: publicPostOffers, post: publicPosts }).from(publicPostOffers).innerJoin(publicPosts, eq(publicPosts.id, publicPostOffers.postId)).where(and(eq(publicPostOffers.id, offerId), eq(publicPosts.authorId, userId), eq(publicPostOffers.status, "pending")));
-    if (!record) return null;
+    if (!record || await this.isBlockedBetween(userId, record.offer.userId)) return null;
     if (response === "accepted" && !record.post.projectId) return { projectId: null };
     const now = new Date();
     await this.database.update(publicPostOffers).set({ status: response, updatedAt: now }).where(eq(publicPostOffers.id, offerId));
@@ -231,7 +245,7 @@ class PostgreSqlPublicRepository implements PublicRepository {
 
   public async reactToPost(userId: string, postId: string, reaction: PublicReaction): Promise<PublicPost | null> {
     const [post] = await this.database.select({ id: publicPosts.id, authorId: publicPosts.authorId, title: publicPosts.title }).from(publicPosts).where(eq(publicPosts.id, postId));
-    if (!post) return null;
+    if (!post || await this.isBlockedBetween(userId, post.authorId)) return null;
     const [previous] = await this.database.select({ reaction: postReactions.reaction }).from(postReactions).where(and(eq(postReactions.postId, postId), eq(postReactions.userId, userId)));
     await this.database.insert(postReactions).values({ postId, userId, reaction, createdAt: new Date() }).onConflictDoUpdate({ target: [postReactions.postId, postReactions.userId], set: { reaction } });
     if (post.authorId !== userId && previous?.reaction !== reaction) {
@@ -243,13 +257,13 @@ class PostgreSqlPublicRepository implements PublicRepository {
 
   public async addComment(userId: string, postId: string, input: { body: string; parentCommentId: string | null }): Promise<PublicComment | null> {
     const [post] = await this.database.select({ id: publicPosts.id, authorId: publicPosts.authorId, title: publicPosts.title }).from(publicPosts).where(eq(publicPosts.id, postId));
-    if (!post) return null;
+    if (!post || await this.isBlockedBetween(userId, post.authorId)) return null;
     let parent: { id: string; authorId: string } | undefined;
     if (input.parentCommentId) {
       [parent] = await this.database.select({ id: postComments.id, authorId: postComments.authorId })
         .from(postComments)
         .where(and(eq(postComments.id, input.parentCommentId), eq(postComments.postId, postId)));
-      if (!parent) return null;
+      if (!parent || await this.isBlockedBetween(userId, parent.authorId)) return null;
     }
     const now = new Date();
     const [comment] = await this.database.insert(postComments).values({ postId, authorId: userId, parentCommentId: parent?.id ?? null, body: input.body, createdAt: now, updatedAt: now }).returning();
@@ -280,6 +294,7 @@ class PostgreSqlPublicRepository implements PublicRepository {
   }
 
   public async getProfile(viewerId: string, personId: string): Promise<PublicProfile | null> {
+    if (viewerId !== personId && await this.isBlockedBetween(viewerId, personId)) return null;
     const person = await this.personSummary(personId, true);
     if (!person) return null;
     const [profile] = await this.database.select({ biography: profiles.biography }).from(profiles).where(eq(profiles.userId, personId));
@@ -301,7 +316,7 @@ class PostgreSqlPublicRepository implements PublicRepository {
   }
 
   public async createConnectionRequest(senderId: string, recipientId: string): Promise<boolean> {
-    if (senderId === recipientId || !(await this.personSummary(recipientId))) return false;
+    if (senderId === recipientId || await this.isBlockedBetween(senderId, recipientId) || !(await this.personSummary(recipientId))) return false;
     const [existing] = await this.database.select({ id: connectionRequests.id }).from(connectionRequests).where(or(and(eq(connectionRequests.senderId, senderId), eq(connectionRequests.recipientId, recipientId)), and(eq(connectionRequests.senderId, recipientId), eq(connectionRequests.recipientId, senderId))));
     if (existing) return false;
     const now = new Date();
@@ -314,7 +329,8 @@ class PostgreSqlPublicRepository implements PublicRepository {
 
   public async getIncomingConnectionRequests(userId: string): Promise<ConnectionRequest[]> {
     const rows = await this.database.select({ request: connectionRequests, senderId: users.id, displayName: profiles.displayName, fieldName: profiles.fieldName, location: profiles.location, avatarDataUrl: profiles.avatarDataUrl, memberSince: users.createdAt }).from(connectionRequests).innerJoin(users, eq(users.id, connectionRequests.senderId)).leftJoin(profiles, eq(profiles.userId, users.id)).where(and(eq(connectionRequests.recipientId, userId), eq(connectionRequests.status, "pending"))).orderBy(desc(connectionRequests.createdAt));
-    return rows.map(({ request, senderId, displayName, fieldName, location, avatarDataUrl, memberSince }) => ({ id: request.id, createdAt: iso(request.createdAt), sender: { id: senderId, displayName: displayName ?? "TOP member", fieldName, location, avatarDataUrl, memberSince: iso(memberSince) } }));
+    const hidden = await this.hiddenPersonIds(userId, rows.map((row) => row.senderId));
+    return rows.filter((row) => !hidden.has(row.senderId)).map(({ request, senderId, displayName, fieldName, location, avatarDataUrl, memberSince }) => ({ id: request.id, createdAt: iso(request.createdAt), sender: { id: senderId, displayName: displayName ?? "TOP member", fieldName, location, avatarDataUrl, memberSince: iso(memberSince) } }));
   }
 
   public async respondToConnectionRequest(userId: string, requestId: string, response: "accepted" | "declined"): Promise<boolean> {
@@ -339,7 +355,9 @@ class PostgreSqlPublicRepository implements PublicRepository {
     const connectedAt = new Map<string, Date>();
     for (const connection of connections) connectedAt.set(connection.senderId === userId ? connection.recipientId : connection.senderId, connection.updatedAt);
     const personIds = new Set([...connectedAt.keys(), ...latestByPerson.keys()]);
+    const hidden = await this.hiddenPersonIds(userId, [...personIds]);
     const conversations = (await Promise.all([...personIds].map(async (personId) => {
+      if (hidden.has(personId)) return null;
       const message = latestByPerson.get(personId);
       const person = await this.personSummary(personId);
       return person ? { person, lastMessage: message?.body ?? "Connected in TOP. Begin a private conversation.", lastMessageAt: iso(message?.createdAt ?? connectedAt.get(personId) ?? new Date()), unreadCount: unreadByPerson.get(personId) ?? 0 } : null;
@@ -348,7 +366,7 @@ class PostgreSqlPublicRepository implements PublicRepository {
   }
 
   public async getDirectMessages(userId: string, personId: string): Promise<DirectMessage[] | null> {
-    if (!(await this.areConnected(userId, personId))) return null;
+    if (await this.isBlockedBetween(userId, personId) || !(await this.areConnected(userId, personId))) return null;
     await this.database.update(directMessages).set({ readAt: new Date() }).where(and(eq(directMessages.senderId, personId), eq(directMessages.recipientId, userId), isNull(directMessages.readAt)));
     const rows = await this.database.select().from(directMessages).where(or(and(eq(directMessages.senderId, userId), eq(directMessages.recipientId, personId)), and(eq(directMessages.senderId, personId), eq(directMessages.recipientId, userId)))).orderBy(asc(directMessages.createdAt)).limit(250);
     const people = new Map<string, PublicPersonSummary | null>();
@@ -360,7 +378,7 @@ class PostgreSqlPublicRepository implements PublicRepository {
   }
 
   public async sendDirectMessage(userId: string, personId: string, body: string): Promise<DirectMessage | null> {
-    if (!(await this.areConnected(userId, personId))) return null;
+    if (await this.isBlockedBetween(userId, personId) || !(await this.areConnected(userId, personId))) return null;
     const now = new Date();
     const [message] = await this.database.insert(directMessages).values({ senderId: userId, recipientId: personId, body, readAt: null, createdAt: now }).returning();
     const sender = await this.personSummary(userId);
@@ -371,7 +389,37 @@ class PostgreSqlPublicRepository implements PublicRepository {
 
   public async getPost(viewerId: string, postId: string): Promise<PublicPost | null> {
     const rows = await this.database.select({ post: publicPosts, authorId: users.id, displayName: profiles.displayName, fieldName: profiles.fieldName, location: profiles.location, avatarDataUrl: profiles.avatarDataUrl, memberSince: users.createdAt }).from(publicPosts).innerJoin(users, eq(users.id, publicPosts.authorId)).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(publicPosts.id, postId));
+    if (rows[0] && await this.isBlockedBetween(viewerId, rows[0].authorId)) return null;
     return (await this.hydratePosts(viewerId, rows, true))[0] ?? null;
+  }
+
+  public async blockPerson(userId: string, personId: string): Promise<PublicPersonSummary | null> {
+    if (userId === personId) return null;
+    const person = await this.personSummary(personId, true);
+    if (!person) return null;
+    const now = new Date();
+    await this.database.insert(userBlocks).values({ blockerId: userId, blockedId: personId, createdAt: now }).onConflictDoNothing();
+    // Blocking makes contact stop immediately. Existing messages stay private
+    // in the database but are excluded from both people's conversation lists.
+    await this.database.delete(connectionRequests).where(or(and(eq(connectionRequests.senderId, userId), eq(connectionRequests.recipientId, personId)), and(eq(connectionRequests.senderId, personId), eq(connectionRequests.recipientId, userId))));
+    return person;
+  }
+
+  public async unblockPerson(userId: string, personId: string): Promise<boolean> {
+    const deleted = await this.database.delete(userBlocks).where(and(eq(userBlocks.blockerId, userId), eq(userBlocks.blockedId, personId))).returning({ blockedId: userBlocks.blockedId });
+    return deleted.length > 0;
+  }
+
+  public async listBlockedPeople(userId: string): Promise<PublicPersonSummary[]> {
+    const rows = await this.database.select({ id: users.id, displayName: profiles.displayName, fieldName: profiles.fieldName, location: profiles.location, avatarDataUrl: profiles.avatarDataUrl, memberSince: users.createdAt }).from(userBlocks).innerJoin(users, eq(users.id, userBlocks.blockedId)).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(userBlocks.blockerId, userId)).orderBy(desc(userBlocks.createdAt));
+    return rows.map((person) => ({ id: person.id, displayName: person.displayName ?? "TOP member", fieldName: person.fieldName, location: person.location, avatarDataUrl: person.avatarDataUrl, memberSince: iso(person.memberSince) }));
+  }
+
+  public async createSafetyReport(userId: string, input: { targetType: SafetyReportTarget; targetId: string; reason: SafetyReportReason; note: string | null }): Promise<boolean> {
+    const targetIsReportable = await this.isReportableTarget(userId, input.targetType, input.targetId);
+    if (!targetIsReportable) return false;
+    await this.database.insert(safetyReports).values({ reporterId: userId, targetType: input.targetType, targetId: input.targetId, reason: input.reason, note: input.note, status: "open", createdAt: new Date() });
+    return true;
   }
 
   private async withConnectionStatus(viewerId: string, people: Array<{ id: string; displayName: string | null; fieldName: string | null; location: string | null; avatarDataUrl: string | null; memberSince: Date }>): Promise<PublicSearchPerson[]> {
@@ -395,13 +443,16 @@ class PostgreSqlPublicRepository implements PublicRepository {
       this.database.select({ id: seeds.id, sourcePublicPostId: seeds.sourcePublicPostId }).from(seeds).where(and(eq(seeds.creatorId, viewerId), inArray(seeds.sourcePublicPostId, ids))),
       this.database.select().from(publicPostOffers).where(inArray(publicPostOffers.postId, ids))
     ]);
+    const hidden = await this.hiddenPersonIds(viewerId, [...reactionRows.map((reaction) => reaction.userId), ...commentRows.map((row) => row.authorId)]);
+    const visibleReactionRows = reactionRows.filter((reaction) => !hidden.has(reaction.userId));
+    const visibleCommentRows = commentRows.filter((row) => !hidden.has(row.authorId));
     const seedByPostId = new Map(seedRows.flatMap((seed) => seed.sourcePublicPostId ? [[seed.sourcePublicPostId, seed.id] as const] : []));
     const viewerOfferByPostId = new Map(offerRows.filter((offer) => offer.userId === viewerId).map((offer) => [offer.postId, offer]));
     const pendingOfferCountByPostId = new Map<string, number>();
     for (const offer of offerRows) if (offer.status === "pending") pendingOfferCountByPostId.set(offer.postId, (pendingOfferCountByPostId.get(offer.postId) ?? 0) + 1);
     return rows.map(({ post, authorId, displayName, fieldName, location, avatarDataUrl, memberSince }) => {
-      const postReactionsForPost = reactionRows.filter((reaction) => reaction.postId === post.id);
-      const postCommentsForPost = commentRows.filter(({ comment }) => comment.postId === post.id);
+      const postReactionsForPost = visibleReactionRows.filter((reaction) => reaction.postId === post.id);
+      const postCommentsForPost = visibleCommentRows.filter(({ comment }) => comment.postId === post.id);
       const reactionCount = Object.fromEntries(reactions.map((reaction) => [reaction, postReactionsForPost.filter((entry) => entry.reaction === reaction).length])) as Record<PublicReaction, number>;
       const viewerReaction = postReactionsForPost.find((reaction) => reaction.userId === viewerId)?.reaction as PublicReaction | undefined;
       const viewerOffer = viewerOfferByPostId.get(post.id);
@@ -420,6 +471,38 @@ class PostgreSqlPublicRepository implements PublicRepository {
     if (leftId === rightId) return false;
     const [relationship] = await this.database.select({ id: connectionRequests.id }).from(connectionRequests).where(and(eq(connectionRequests.status, "accepted"), or(and(eq(connectionRequests.senderId, leftId), eq(connectionRequests.recipientId, rightId)), and(eq(connectionRequests.senderId, rightId), eq(connectionRequests.recipientId, leftId)))));
     return Boolean(relationship);
+  }
+
+  private async isBlockedBetween(leftId: string, rightId: string): Promise<boolean> {
+    if (leftId === rightId) return false;
+    const [block] = await this.database.select({ blockerId: userBlocks.blockerId }).from(userBlocks).where(or(and(eq(userBlocks.blockerId, leftId), eq(userBlocks.blockedId, rightId)), and(eq(userBlocks.blockerId, rightId), eq(userBlocks.blockedId, leftId))));
+    return Boolean(block);
+  }
+
+  private async isReportableTarget(reporterId: string, targetType: SafetyReportTarget, targetId: string): Promise<boolean> {
+    if (targetType === "person") {
+      return targetId !== reporterId && Boolean(await this.personSummary(targetId, true));
+    }
+
+    if (targetType === "post") {
+      const [post] = await this.database.select({ authorId: publicPosts.authorId }).from(publicPosts).where(eq(publicPosts.id, targetId));
+      return Boolean(post && post.authorId !== reporterId);
+    }
+
+    if (targetType === "comment") {
+      const [comment] = await this.database.select({ authorId: postComments.authorId }).from(postComments).where(eq(postComments.id, targetId));
+      return Boolean(comment && comment.authorId !== reporterId);
+    }
+
+    const [message] = await this.database.select({ senderId: directMessages.senderId, recipientId: directMessages.recipientId }).from(directMessages).where(eq(directMessages.id, targetId));
+    return Boolean(message && message.senderId !== reporterId && message.recipientId === reporterId);
+  }
+
+  private async hiddenPersonIds(viewerId: string, personIds: string[]): Promise<Set<string>> {
+    const candidates = [...new Set(personIds.filter((personId) => personId !== viewerId))];
+    if (!candidates.length) return new Set();
+    const rows = await this.database.select({ blockerId: userBlocks.blockerId, blockedId: userBlocks.blockedId }).from(userBlocks).where(or(and(eq(userBlocks.blockerId, viewerId), inArray(userBlocks.blockedId, candidates)), and(eq(userBlocks.blockedId, viewerId), inArray(userBlocks.blockerId, candidates))));
+    return new Set(rows.map((row) => row.blockerId === viewerId ? row.blockedId : row.blockerId));
   }
 
   private async createNotification(userId: string, entityId: string, type: string, title: string, detail: string, href: string, createdAt: Date): Promise<void> { await this.database.insert(notifications).values({ userId, entityId, type, title, detail, href, createdAt }); notificationHub.publish(userId, { type, href }); }

@@ -1,17 +1,21 @@
 import { createHmac, randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import type { AppConfig } from "../config/env.js";
 import { createDatabase } from "../db/client.js";
-import { authSessions, profiles, users } from "../db/schema.js";
+import { accountActionTokens, authSessions, profiles, users } from "../db/schema.js";
+import { AccountEmailService, type AccountActionPurpose, type AccountEmailDelivery } from "../notifications/accountEmail.js";
 
 const scrypt = promisify(scryptCallback);
 const sessionLifetimeMs = 1000 * 60 * 60 * 24 * 7;
+const verificationLifetimeMs = 1000 * 60 * 60 * 24;
+const passwordResetLifetimeMs = 1000 * 60 * 30;
 
 export interface AuthenticatedUser {
   id: string;
   email: string;
+  emailVerified: boolean;
   displayName: string;
   biography: string | null;
   location: string | null;
@@ -30,9 +34,24 @@ interface StoredSession {
   expiresAt: number;
 }
 
+interface StoredActionToken {
+  id: string;
+  userId: string;
+  purpose: AccountActionPurpose;
+  expiresAt: number;
+  usedAt: number | null;
+}
+
+export interface AccountActionResult {
+  delivery: AccountEmailDelivery;
+  // Only ever present outside production, so local development and API tests
+  // can exercise the full account lifecycle without leaking live reset links.
+  developmentActionUrl?: string;
+}
+
 export class AuthError extends Error {
-  public constructor(public readonly code: "duplicate-email" | "invalid-credentials") {
-    super(code === "duplicate-email" ? "An account already exists for that email." : "Email or password is not correct.");
+  public constructor(public readonly code: "duplicate-email" | "invalid-credentials" | "too-many-attempts" | "invalid-action") {
+    super(authErrorMessage(code));
   }
 }
 
@@ -40,22 +59,27 @@ export class AuthService {
   private readonly usersByEmail = new Map<string, StoredUser>();
   private readonly usersById = new Map<string, StoredUser>();
   private readonly sessions = new Map<string, StoredSession>();
+  private readonly actionTokens = new Map<string, StoredActionToken>();
   private readonly loginAttempts = new Map<string, number[]>();
   private readonly signingSecret: string;
+  private readonly actionSecret: string;
   private readonly secureCookies: boolean;
   private readonly database: ReturnType<typeof createDatabase>["db"] | null;
+  private readonly email: AccountEmailService;
 
-  public constructor(config: Pick<AppConfig, "environment" | "sessionSecret" | "databaseUrl" | "databaseEnabled">) {
+  public constructor(private readonly config: Pick<AppConfig, "environment" | "sessionSecret" | "accountActionSecret" | "publicAppUrl" | "resendApiKey" | "emailFrom" | "databaseUrl" | "databaseEnabled">) {
     if (config.environment === "production" && (!config.sessionSecret || config.sessionSecret.length < 32)) {
       throw new Error("SESSION_SECRET must be at least 32 characters in production.");
     }
 
     this.signingSecret = config.sessionSecret ?? "top-local-development-session-secret-change-before-production";
+    this.actionSecret = config.accountActionSecret ?? this.signingSecret;
     this.secureCookies = config.environment === "production";
     this.database = config.databaseUrl && config.databaseEnabled ? createDatabase(config).db : null;
+    this.email = new AccountEmailService(config);
   }
 
-  public async register(input: { email: string; password: string; displayName: string }): Promise<{ user: AuthenticatedUser; cookie: string }> {
+  public async register(input: { email: string; password: string; displayName: string }): Promise<{ user: AuthenticatedUser; cookie: string; verification: AccountActionResult }> {
     const email = normalizeEmail(input.email);
     if (this.database) return this.registerWithDatabase({ ...input, email });
     if (this.usersByEmail.has(email)) throw new AuthError("duplicate-email");
@@ -64,6 +88,7 @@ export class AuthService {
     const user: StoredUser = {
       id: randomUUID(),
       email,
+      emailVerified: false,
       displayName: input.displayName.trim(),
       biography: null,
       location: null,
@@ -75,7 +100,8 @@ export class AuthService {
 
     this.usersByEmail.set(email, user);
     this.usersById.set(user.id, user);
-    return { user: toPublicUser(user), cookie: await this.createSession(user.id) };
+    const verification = await this.issueAction(user, "verify-email");
+    return { user: toPublicUser(user), cookie: await this.createSession(user.id), verification };
   }
 
   public async login(input: { email: string; password: string; fingerprint: string }): Promise<{ user: AuthenticatedUser; cookie: string }> {
@@ -133,6 +159,49 @@ export class AuthService {
     return toPublicUser(user);
   }
 
+  public async resendVerification(userId: string): Promise<AccountActionResult | null> {
+    const user = await this.userById(userId);
+    if (!user || user.emailVerified) return null;
+    return this.issueAction(user, "verify-email");
+  }
+
+  public async verifyEmail(rawToken: string): Promise<AuthenticatedUser | null> {
+    const action = await this.consumeAction(rawToken, "verify-email");
+    if (!action) return null;
+    const now = new Date();
+    if (this.database) {
+      await this.database.update(users).set({ emailVerifiedAt: now, updatedAt: now }).where(eq(users.id, action.userId));
+    } else {
+      const user = this.usersById.get(action.userId);
+      if (user) user.emailVerified = true;
+    }
+    return this.userById(action.userId);
+  }
+
+  public async requestPasswordReset(emailInput: string): Promise<AccountActionResult | null> {
+    const user = await this.userByEmail(normalizeEmail(emailInput));
+    // Returning null outward is intentional: this endpoint must never reveal
+    // whether a particular address belongs to a TOP account.
+    return user ? this.issueAction(user, "password-reset") : null;
+  }
+
+  public async resetPassword(rawToken: string, password: string): Promise<void> {
+    const action = await this.consumeAction(rawToken, "password-reset");
+    if (!action) throw new AuthError("invalid-action");
+    const now = new Date();
+    const passwordHash = await hashPassword(password);
+    if (this.database) {
+      await this.database.update(users).set({ passwordHash, updatedAt: now }).where(eq(users.id, action.userId));
+      // A password reset revokes every browser session, including a stolen one.
+      await this.database.delete(authSessions).where(eq(authSessions.userId, action.userId));
+    } else {
+      const user = this.usersById.get(action.userId);
+      if (!user) throw new AuthError("invalid-action");
+      user.passwordHash = passwordHash;
+      for (const [id, session] of this.sessions) if (session.userId === action.userId) this.sessions.delete(id);
+    }
+  }
+
   private async createSession(userId: string): Promise<string> {
     this.removeExpiredSessions();
     const id = randomUUID();
@@ -152,6 +221,10 @@ export class AuthService {
     return createHmac("sha256", this.signingSecret).update(value).digest("base64url");
   }
 
+  private hashActionToken(rawToken: string): string {
+    return createHmac("sha256", this.actionSecret).update(rawToken).digest("base64url");
+  }
+
   private isTokenSignatureValid(sessionId: string, expiresAt: string, signature: string): boolean {
     const expected = this.sign(`${sessionId}.${expiresAt}`);
     const receivedBytes = Buffer.from(signature);
@@ -163,7 +236,7 @@ export class AuthService {
     const now = Date.now();
     const attempts = (this.loginAttempts.get(fingerprint) ?? []).filter((attempt) => now - attempt < 15 * 60 * 1000);
     this.loginAttempts.set(fingerprint, attempts);
-    if (attempts.length >= 7) throw new AuthError("invalid-credentials");
+    if (attempts.length >= 7) throw new AuthError("too-many-attempts");
   }
 
   private recordFailedLogin(fingerprint: string): void {
@@ -177,24 +250,25 @@ export class AuthService {
     for (const [id, session] of this.sessions) if (session.expiresAt <= now) this.sessions.delete(id);
   }
 
-  private async registerWithDatabase(input: { email: string; password: string; displayName: string }): Promise<{ user: AuthenticatedUser; cookie: string }> {
+  private async registerWithDatabase(input: { email: string; password: string; displayName: string }): Promise<{ user: AuthenticatedUser; cookie: string; verification: AccountActionResult }> {
     if (!this.database) throw new Error("Database is unavailable.");
     const now = new Date();
     const id = randomUUID();
     try {
-      await this.database.insert(users).values({ id, email: input.email, passwordHash: await hashPassword(input.password), createdAt: now, updatedAt: now });
+      await this.database.insert(users).values({ id, email: input.email, passwordHash: await hashPassword(input.password), emailVerifiedAt: null, createdAt: now, updatedAt: now });
       await this.database.insert(profiles).values({ userId: id, displayName: input.displayName.trim(), createdAt: now, updatedAt: now });
     } catch (error) {
       if (isUniqueViolation(error)) throw new AuthError("duplicate-email");
       throw error;
     }
-    const user: AuthenticatedUser = { id, email: input.email, displayName: input.displayName.trim(), biography: null, location: null, fieldName: null, avatarDataUrl: null, createdAt: now.toISOString() };
-    return { user, cookie: await this.createSession(id) };
+    const user: AuthenticatedUser = { id, email: input.email, emailVerified: false, displayName: input.displayName.trim(), biography: null, location: null, fieldName: null, avatarDataUrl: null, createdAt: now.toISOString() };
+    const verification = await this.issueAction(user, "verify-email");
+    return { user, cookie: await this.createSession(id), verification };
   }
 
   private async loginWithDatabase(input: { email: string; password: string; fingerprint: string }): Promise<{ user: AuthenticatedUser; cookie: string }> {
     if (!this.database) throw new Error("Database is unavailable.");
-    const [record] = await this.database.select({ id: users.id, email: users.email, passwordHash: users.passwordHash, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location, fieldName: profiles.fieldName, avatarDataUrl: profiles.avatarDataUrl }).from(users).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(users.email, input.email));
+    const [record] = await this.database.select({ id: users.id, email: users.email, passwordHash: users.passwordHash, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location, fieldName: profiles.fieldName, avatarDataUrl: profiles.avatarDataUrl }).from(users).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(users.email, input.email));
     if (!record || !(await verifyPassword(input.password, record.passwordHash))) {
       this.recordFailedLogin(input.fingerprint);
       throw new AuthError("invalid-credentials");
@@ -210,7 +284,7 @@ export class AuthService {
       await this.database.delete(authSessions).where(eq(authSessions.id, sessionId));
       return null;
     }
-    const [record] = await this.database.select({ sessionExpiresAt: authSessions.expiresAt, id: users.id, email: users.email, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location, fieldName: profiles.fieldName, avatarDataUrl: profiles.avatarDataUrl }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(authSessions.id, sessionId));
+    const [record] = await this.database.select({ sessionExpiresAt: authSessions.expiresAt, id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location, fieldName: profiles.fieldName, avatarDataUrl: profiles.avatarDataUrl }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(authSessions.id, sessionId));
     if (!record || record.sessionExpiresAt.getTime() !== expiresAt || record.sessionExpiresAt.getTime() <= Date.now()) return null;
     return toDatabaseUser(record);
   }
@@ -220,9 +294,67 @@ export class AuthService {
     const changes = { updatedAt: new Date(), ...(input.displayName !== undefined ? { displayName: input.displayName.trim() } : {}), ...(input.biography !== undefined ? { biography: input.biography } : {}), ...(input.location !== undefined ? { location: input.location } : {}), ...(input.fieldName !== undefined ? { fieldName: input.fieldName } : {}), ...(input.avatarDataUrl !== undefined ? { avatarDataUrl: input.avatarDataUrl } : {}) };
     const [profile] = await this.database.update(profiles).set(changes).where(eq(profiles.userId, userId)).returning();
     if (!profile) return null;
-    const [user] = await this.database.select({ id: users.id, email: users.email, createdAt: users.createdAt }).from(users).where(eq(users.id, userId));
+    const [user] = await this.database.select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt }).from(users).where(eq(users.id, userId));
     if (!user) return null;
-    return { id: user.id, email: user.email, displayName: profile.displayName, biography: profile.biography, location: profile.location, fieldName: profile.fieldName, avatarDataUrl: profile.avatarDataUrl, createdAt: user.createdAt.toISOString() };
+    return { id: user.id, email: user.email, emailVerified: Boolean(user.emailVerifiedAt), displayName: profile.displayName, biography: profile.biography, location: profile.location, fieldName: profile.fieldName, avatarDataUrl: profile.avatarDataUrl, createdAt: user.createdAt.toISOString() };
+  }
+
+  private async userById(userId: string): Promise<AuthenticatedUser | null> {
+    if (!this.database) {
+      const user = this.usersById.get(userId);
+      return user ? toPublicUser(user) : null;
+    }
+    const [record] = await this.database.select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location, fieldName: profiles.fieldName, avatarDataUrl: profiles.avatarDataUrl }).from(users).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(users.id, userId));
+    return record ? toDatabaseUser(record) : null;
+  }
+
+  private async userByEmail(email: string): Promise<AuthenticatedUser | null> {
+    if (!this.database) {
+      const user = this.usersByEmail.get(email);
+      return user ? toPublicUser(user) : null;
+    }
+    const [record] = await this.database.select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location, fieldName: profiles.fieldName, avatarDataUrl: profiles.avatarDataUrl }).from(users).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(users.email, email));
+    return record ? toDatabaseUser(record) : null;
+  }
+
+  private async issueAction(user: AuthenticatedUser, purpose: AccountActionPurpose): Promise<AccountActionResult> {
+    const rawToken = randomBytes(32).toString("base64url");
+    const tokenHash = this.hashActionToken(rawToken);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + (purpose === "verify-email" ? verificationLifetimeMs : passwordResetLifetimeMs));
+    if (this.database) {
+      await this.database.delete(accountActionTokens).where(and(eq(accountActionTokens.userId, user.id), eq(accountActionTokens.purpose, purpose), isNull(accountActionTokens.usedAt)));
+      await this.database.insert(accountActionTokens).values({ id: randomUUID(), userId: user.id, purpose, tokenHash, expiresAt, usedAt: null, createdAt: now });
+    } else {
+      for (const [hash, action] of this.actionTokens) if (action.userId === user.id && action.purpose === purpose && action.usedAt === null) this.actionTokens.delete(hash);
+      this.actionTokens.set(tokenHash, { id: randomUUID(), userId: user.id, purpose, expiresAt: expiresAt.getTime(), usedAt: null });
+    }
+    const actionUrl = this.actionUrl(purpose, rawToken);
+    const delivery = await this.email.send({ email: user.email, displayName: user.displayName, purpose, actionUrl });
+    return { delivery, ...(this.config.environment === "production" ? {} : { developmentActionUrl: actionUrl }) };
+  }
+
+  private async consumeAction(rawToken: string, purpose: AccountActionPurpose): Promise<{ userId: string } | null> {
+    const tokenHash = this.hashActionToken(rawToken);
+    const now = new Date();
+    if (!this.database) {
+      const action = this.actionTokens.get(tokenHash);
+      if (!action || action.purpose !== purpose || action.usedAt !== null || action.expiresAt <= now.getTime()) return null;
+      action.usedAt = now.getTime();
+      return { userId: action.userId };
+    }
+    const [action] = await this.database.select().from(accountActionTokens).where(and(eq(accountActionTokens.tokenHash, tokenHash), eq(accountActionTokens.purpose, purpose), isNull(accountActionTokens.usedAt)));
+    if (!action || action.expiresAt.getTime() <= now.getTime()) return null;
+    const updated = await this.database.update(accountActionTokens).set({ usedAt: now }).where(and(eq(accountActionTokens.id, action.id), isNull(accountActionTokens.usedAt))).returning({ id: accountActionTokens.id });
+    return updated.length ? { userId: action.userId } : null;
+  }
+
+  private actionUrl(purpose: AccountActionPurpose, rawToken: string): string {
+    const publicAppUrl = this.config.publicAppUrl ?? "http://localhost:5173";
+    const base = publicAppUrl.endsWith("/") ? publicAppUrl : `${publicAppUrl}/`;
+    const url = new URL("join", base);
+    url.searchParams.set(purpose === "verify-email" ? "verify" : "reset", rawToken);
+    return url.toString();
   }
 }
 
@@ -258,8 +390,15 @@ function parseCookie(header: string | undefined, name: string): string | null {
   return null;
 }
 
-function toDatabaseUser(record: { id: string; email: string; createdAt: Date; displayName: string | null; biography: string | null; location: string | null; fieldName: string | null; avatarDataUrl: string | null }): AuthenticatedUser {
-  return { id: record.id, email: record.email, displayName: record.displayName ?? record.email.split("@")[0]!, biography: record.biography, location: record.location, fieldName: record.fieldName, avatarDataUrl: record.avatarDataUrl, createdAt: record.createdAt.toISOString() };
+function toDatabaseUser(record: { id: string; email: string; emailVerifiedAt: Date | null; createdAt: Date; displayName: string | null; biography: string | null; location: string | null; fieldName: string | null; avatarDataUrl: string | null }): AuthenticatedUser {
+  return { id: record.id, email: record.email, emailVerified: Boolean(record.emailVerifiedAt), displayName: record.displayName ?? record.email.split("@")[0]!, biography: record.biography, location: record.location, fieldName: record.fieldName, avatarDataUrl: record.avatarDataUrl, createdAt: record.createdAt.toISOString() };
+}
+
+function authErrorMessage(code: AuthError["code"]): string {
+  if (code === "duplicate-email") return "Use sign in or password recovery if this email already has a TOP account.";
+  if (code === "too-many-attempts") return "Too many sign-in attempts. Please wait 15 minutes before trying again.";
+  if (code === "invalid-action") return "That account link is invalid or has expired. Request a new one and try again.";
+  return "Email or password is not correct.";
 }
 
 function isUniqueViolation(error: unknown): boolean {

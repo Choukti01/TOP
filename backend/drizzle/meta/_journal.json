@@ -99,6 +99,13 @@
       "when": 1788393600000,
       "tag": "0013_living_project_circle",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788480000000,
+      "tag": "0014_account_trust_and_safety",
+      "breakpoints": true
     }
   ]
 }

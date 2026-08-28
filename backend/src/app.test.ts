@@ -279,6 +279,50 @@ describe("TOP API", () => {
     expect(project.body.seed).toMatchObject({ status: "archived", projectId: project.body.project.id });
   });
 
+  it("keeps verification and password recovery one-time, private, and session-safe", async () => {
+    const created = await request(app)
+      .post("/api/v1/auth/register")
+      .send({ email: "trust@example.com", displayName: "Trust test", password: "a-longer-secure-test-password" });
+    expect(created.status).toBe(201);
+    expect(created.body.user.emailVerified).toBe(false);
+    const verificationUrl = new URL(created.body.developmentActionUrl);
+    const verification = await request(app)
+      .post("/api/v1/auth/email-verification/confirm")
+      .send({ token: verificationUrl.searchParams.get("verify") });
+    expect(verification.status).toBe(200);
+    expect(verification.body.user.emailVerified).toBe(true);
+    expect((await request(app)
+      .post("/api/v1/auth/email-verification/confirm")
+      .send({ token: verificationUrl.searchParams.get("verify") })).status).toBe(400);
+
+    const resetRequest = await request(app)
+      .post("/api/v1/auth/password-reset/request")
+      .send({ email: "trust@example.com" });
+    expect(resetRequest.status).toBe(202);
+    const resetUrl = new URL(resetRequest.body.developmentActionUrl);
+    const reset = await request(app)
+      .post("/api/v1/auth/password-reset/confirm")
+      .send({ token: resetUrl.searchParams.get("reset"), password: "a-completely-new-secure-password" });
+    expect(reset.status).toBe(200);
+    expect((await request(app)
+      .post("/api/v1/auth/password-reset/confirm")
+      .send({ token: resetUrl.searchParams.get("reset"), password: "another-completely-secure-password" })).status).toBe(400);
+
+    const oldCookie = created.headers["set-cookie"]?.[0]?.split(";")[0] ?? "";
+    expect((await request(app).get("/api/v1/auth/session").set("Cookie", oldCookie)).status).toBe(401);
+    expect((await request(app).post("/api/v1/auth/login").send({ email: "trust@example.com", password: "a-longer-secure-test-password" })).status).toBe(401);
+    expect((await request(app).post("/api/v1/auth/login").send({ email: "trust@example.com", password: "a-completely-new-secure-password" })).status).toBe(200);
+  });
+
+  it("slows repeated sign-in guesses before they become an account attack", async () => {
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      expect((await request(app).post("/api/v1/auth/login").send({ email: "not-an-account@example.com", password: "not-the-right-password" })).status).toBe(401);
+    }
+    const blocked = await request(app).post("/api/v1/auth/login").send({ email: "not-an-account@example.com", password: "not-the-right-password" });
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers["retry-after"]).toBeDefined();
+  });
+
   it("ends the browser session completely on logout", async () => {
     const logout = await request(app).post("/api/v1/auth/logout").set("Cookie", sessionCookie);
     expect(logout.status).toBe(204);

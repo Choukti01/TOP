@@ -402,5 +402,14 @@ function authErrorMessage(code: AuthError["code"]): string {
 }
 
 function isUniqueViolation(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "23505";
+  // Drizzle wraps driver failures in a QueryError, so the PostgreSQL code is
+  // usually available on `cause` rather than the outer error itself.
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current; depth += 1) {
+    if (typeof current !== "object" || current === null) return false;
+    const candidate = current as { code?: unknown; cause?: unknown };
+    if (candidate.code === "23505") return true;
+    current = candidate.cause;
+  }
+  return false;
 }

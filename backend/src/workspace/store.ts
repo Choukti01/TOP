@@ -6,6 +6,7 @@ export type ProjectArtifactKind = "atelier" | "canvas" | "blueprint" | "note" | 
 export type ProjectActivityType = "project-started" | "project-state-updated" | "next-action-updated" | "milestone-added" | "milestone-completed" | "milestone-reopened" | "artifact-recorded" | "invitation-sent" | "invitation-accepted" | "member-role-updated" | "member-removed" | "circle-updated" | "circle-message-sent" | "contribution-recorded" | "review-recorded";
 export type ProjectMemberRole = "owner" | "contributor" | "mentor";
 export type ProjectContributionType = "idea" | "research" | "design" | "code" | "funding" | "mentorship" | "operations" | "other";
+export type ProjectMessageKind = "update" | "question" | "decision" | "request" | "celebration";
 
 export interface WorkspaceNodeRecord {
   id: string;
@@ -91,6 +92,7 @@ export interface ProjectMessage {
   projectId: string;
   authorId: string;
   authorName: string;
+  kind: ProjectMessageKind;
   body: string;
   createdAt: string;
 }
@@ -166,6 +168,7 @@ interface PersonalWorkspace {
   milestones: ProjectMilestone[];
   artifacts: ProjectArtifact[];
   activities: ProjectActivity[];
+  messages: ProjectMessage[];
 }
 
 const projectColors = ["#dfae63", "#cc7b5b", "#9eb488", "#d4a46f", "#d78397", "#9db9b0"];
@@ -174,7 +177,7 @@ const workspaces = new Map<string, PersonalWorkspace>();
 function workspaceFor(userId: string): PersonalWorkspace {
   const existing = workspaces.get(userId);
   if (existing) return existing;
-  const workspace: PersonalWorkspace = { projects: [], reflections: [], projectReviews: [], contributions: [], milestones: [], artifacts: [], activities: [] };
+  const workspace: PersonalWorkspace = { projects: [], reflections: [], projectReviews: [], contributions: [], milestones: [], artifacts: [], activities: [], messages: [] };
   workspaces.set(userId, workspace);
   return workspace;
 }
@@ -307,7 +310,10 @@ export function getProjectDetail(userId: string, projectId: string): WorkspacePr
       .filter((contribution) => contribution.projectId === projectId)
       .map((contribution) => ({ ...contribution }))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
-    messages: [],
+    messages: workspace.messages
+      .filter((message) => message.projectId === projectId)
+      .map((message) => ({ ...message }))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
     access: { role: "owner", canManage: true },
     pendingInvitations: [],
     activity: workspace.activities
@@ -380,6 +386,28 @@ export function addProjectArtifact(userId: string, projectId: string, input: { t
   touchProject(workspace, project, now);
   addActivity(workspace, projectId, "artifact-recorded", "Evidence recorded", input.title, now);
   return { ...artifact };
+}
+
+export function addProjectMessage(userId: string, projectId: string, body: string, kind: ProjectMessageKind = "update"): ProjectMessage | null {
+  const workspace = workspaceFor(userId);
+  const project = workspace.projects.find((candidate) => candidate.id === projectId);
+  if (!project) return null;
+
+  const now = new Date().toISOString();
+  const message: ProjectMessage = {
+    id: crypto.randomUUID(),
+    projectId,
+    authorId: userId,
+    authorName: "You",
+    kind,
+    body,
+    createdAt: now
+  };
+
+  workspace.messages.push(message);
+  project.updatedAt = now;
+  addActivity(workspace, projectId, "circle-message-sent", "Project circle message sent", null, now);
+  return { ...message };
 }
 
 export function addProjectContribution(userId: string, projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): ProjectContribution | null {

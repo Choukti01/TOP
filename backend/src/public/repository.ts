@@ -422,7 +422,7 @@ class PostgreSqlPublicRepository implements PublicRepository {
     return Boolean(relationship);
   }
 
-  private async createNotification(userId: string, entityId: string, type: string, title: string, detail: string, href: string, createdAt: Date): Promise<void> { await this.database.insert(notifications).values({ userId, entityId, type, title, detail, href, createdAt }); notificationHub.publish(userId); }
+  private async createNotification(userId: string, entityId: string, type: string, title: string, detail: string, href: string, createdAt: Date): Promise<void> { await this.database.insert(notifications).values({ userId, entityId, type, title, detail, href, createdAt }); notificationHub.publish(userId, { type, href }); }
 }
 
 function iso(value: Date): string { return value.toISOString(); }

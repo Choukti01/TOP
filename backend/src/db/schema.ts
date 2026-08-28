@@ -250,6 +250,7 @@ export const projectMessages = pgTable("project_messages", {
   authorId: uuid("author_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull().default("update"),
   body: text("body").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });

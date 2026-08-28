@@ -1,5 +1,10 @@
 import type { ServerResponse } from "node:http";
 
+export interface LiveSignal {
+  type?: string;
+  href?: string | null;
+}
+
 class NotificationHub {
   private readonly subscribers = new Map<string, Set<ServerResponse>>();
 
@@ -14,11 +19,11 @@ class NotificationHub {
     };
   }
 
-  public publish(userId: string): void {
+  public publish(userId: string, signal: LiveSignal = {}): void {
     const group = this.subscribers.get(userId);
     if (!group) return;
     for (const response of group) {
-      if (!response.writableEnded) response.write("event: signal\ndata: {}\n\n");
+      if (!response.writableEnded) response.write(`event: signal\ndata: ${JSON.stringify(signal)}\n\n`);
     }
   }
 }

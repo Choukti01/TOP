@@ -7,6 +7,7 @@ import { notificationHub } from "../realtime/notificationHub.js";
 import {
   addProjectArtifact,
   addProjectContribution,
+  addProjectMessage,
   addProjectReview,
   addProjectMilestone,
   createProject,
@@ -32,6 +33,7 @@ import {
   type ProjectMilestone,
   type ProjectMilestoneStatus,
   type ProjectMessage,
+  type ProjectMessageKind,
   type ProjectPendingInvitation,
   type ProjectReview,
   type TopNotification,
@@ -59,7 +61,7 @@ export interface WorkspaceRepository {
   respondToInvitation(userId: string, invitationId: string, response: "accepted" | "declined"): Promise<WorkspaceProject | null>;
   getNotifications(userId: string): Promise<TopNotification[]>;
   markNotificationRead(userId: string, notificationId: string): Promise<boolean>;
-  addMessage(userId: string, projectId: string, body: string): Promise<ProjectMessage | null>;
+  addMessage(userId: string, projectId: string, body: string, kind: ProjectMessageKind): Promise<ProjectMessage | null>;
   addContribution(userId: string, projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): Promise<ProjectContribution | null>;
   addReview(userId: string, projectId: string, input: { proudOf: string; learned?: string; nextFocus?: string }): Promise<ProjectReview | null>;
   saveReflection(userId: string, answer: string): Promise<{ id: string; answer: string; createdAt: string }>;
@@ -98,7 +100,7 @@ class MemoryWorkspaceRepository implements WorkspaceRepository {
   public async respondToInvitation(_userId: string, _invitationId: string, _response: "accepted" | "declined") { return null; }
   public async getNotifications(_userId: string) { return []; }
   public async markNotificationRead(_userId: string, _notificationId: string) { return false; }
-  public async addMessage(_userId: string, _projectId: string, _body: string) { return null; }
+  public async addMessage(userId: string, projectId: string, body: string, kind: ProjectMessageKind) { return addProjectMessage(userId, projectId, body, kind); }
   public async addContribution(userId: string, projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }) { return addProjectContribution(userId, projectId, input); }
   public async addReview(userId: string, projectId: string, input: { proudOf: string; learned?: string; nextFocus?: string }) { return addProjectReview(userId, projectId, input); }
   public async saveReflection(userId: string, answer: string) { return saveReflection(userId, answer); }
@@ -206,6 +208,9 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
     if (input.status !== undefined) {
       await this.recordActivity(projectId, "project-state-updated", projectStateActivityTitle(input.status), null, now);
     }
+    const actorName = await this.userDisplayName(userId);
+    const detail = input.nextAction ?? (input.status !== undefined ? projectStateActivityTitle(input.status) : null);
+    await this.notifyProjectCircle(row, userId, "project-updated", `${actorName} updated ${row.title}`, detail, now);
     return toProject(row).project;
   }
 
@@ -346,12 +351,12 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
     return Boolean(notification);
   }
 
-  public async addMessage(userId: string, projectId: string, body: string): Promise<ProjectMessage | null> {
+  public async addMessage(userId: string, projectId: string, body: string, kind: ProjectMessageKind): Promise<ProjectMessage | null> {
     const project = await this.findProject(userId, projectId);
     if (!project || !(await this.getProjectAccess(userId, project))) return null;
 
     const now = new Date();
-    const [message] = await this.database.insert(projectMessages).values({ projectId, authorId: userId, body, createdAt: now }).returning();
+    const [message] = await this.database.insert(projectMessages).values({ projectId, authorId: userId, kind, body, createdAt: now }).returning();
     if (!message) throw new Error("TOP could not send this circle message.");
 
     const authorName = await this.userDisplayName(userId);
@@ -360,13 +365,13 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
       recipientId,
       message.id,
       "project-circle-message",
-      `${authorName} wrote in ${project.title}`,
-      "Open the project circle to read the message.",
+      `${authorName} shared a ${projectMessageKindLabel(kind)} in ${project.title}`,
+      "Open the project circle to read it in context.",
       `/field?project=${project.id}&focus=conversation`,
       now
     )));
     await this.recordActivity(project.id, "circle-message-sent", "Project circle message sent", null, now);
-    return { id: message.id, projectId: message.projectId, authorId: message.authorId, authorName, body: message.body, createdAt: iso(message.createdAt) };
+    return { id: message.id, projectId: message.projectId, authorId: message.authorId, authorName, kind: message.kind as ProjectMessageKind, body: message.body, createdAt: iso(message.createdAt) };
   }
 
   public async addContribution(userId: string, projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): Promise<ProjectContribution | null> {
@@ -390,6 +395,7 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
     const contributorName = person?.displayName ?? person?.email.split("@")[0] ?? "TOP member";
     await this.database.update(projects).set({ updatedAt: now }).where(eq(projects.id, projectId));
     await this.recordActivity(projectId, "contribution-recorded", `${contributionTypeLabel(input.type)} contribution added`, input.description, now);
+    await this.notifyProjectCircle(project, userId, "project-contribution-recorded", `${contributorName} added a ${contributionTypeLabel(input.type).toLowerCase()} contribution`, input.description, now);
     return { id: row.id, projectId: row.projectId, contributorId: row.contributorId, contributorName, type: row.type as ProjectContributionType, description: row.description, evidenceUrl: row.evidenceUrl, createdAt: iso(row.createdAt) };
   }
 
@@ -401,6 +407,8 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
     if (!row) throw new Error("TOP could not add this milestone.");
     await this.touchProject(projectId, now);
     await this.recordActivity(projectId, "milestone-added", "Milestone added", title, now);
+    const actorName = await this.userDisplayName(userId);
+    await this.notifyProjectCircle(project, userId, "project-milestone-added", `${actorName} added a milestone in ${project.title}`, title, now);
     return toMilestone(row);
   }
 
@@ -412,6 +420,8 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
     if (!row) return null;
     await this.touchProject(projectId, now);
     await this.recordActivity(projectId, status === "completed" ? "milestone-completed" : "milestone-reopened", status === "completed" ? "Milestone completed" : "Milestone reopened", row.title, now);
+    const actorName = await this.userDisplayName(userId);
+    await this.notifyProjectCircle(project, userId, status === "completed" ? "project-milestone-honoured" : "project-milestone-reopened", `${actorName} ${status === "completed" ? "honoured" : "reopened"} a milestone in ${project.title}`, row.title, now);
     return toMilestone(row);
   }
 
@@ -423,6 +433,8 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
     if (!row) throw new Error("TOP could not record this evidence.");
     await this.touchProject(projectId, now);
     await this.recordActivity(projectId, "artifact-recorded", "Evidence recorded", input.title, now);
+    const actorName = await this.userDisplayName(userId);
+    await this.notifyProjectCircle(project, userId, "project-evidence-recorded", `${actorName} recorded evidence in ${project.title}`, input.title, now);
     return toArtifact(row);
   }
 
@@ -443,6 +455,8 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
     if (!row) throw new Error("TOP could not keep this project review.");
     await this.database.update(projects).set({ updatedAt: now }).where(eq(projects.id, projectId));
     await this.recordActivity(projectId, "review-recorded", "Project review kept", input.proudOf, now);
+    const actorName = await this.userDisplayName(userId);
+    await this.notifyProjectCircle(project, userId, "project-review-recorded", `${actorName} kept a project review in ${project.title}`, input.proudOf, now);
     return toReview(row);
   }
 
@@ -528,7 +542,14 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
 
   private async createNotification(userId: string, entityId: string, type: string, title: string, detail: string | null, href: string | null, createdAt: Date): Promise<void> {
     await this.database.insert(notifications).values({ userId, entityId, type, title, detail, href, createdAt });
-    notificationHub.publish(userId);
+    notificationHub.publish(userId, { type, href });
+  }
+
+  private async notifyProjectCircle(project: typeof projects.$inferSelect, actorId: string, type: string, title: string, detail: string | null, createdAt: Date): Promise<void> {
+    const recipientIds = await this.listProjectAudience(project.id, project.ownerId);
+    await Promise.all(recipientIds
+      .filter((recipientId) => recipientId !== actorId)
+      .map((recipientId) => this.createNotification(recipientId, project.id, type, title, detail, `/field?project=${project.id}`, createdAt)));
   }
 
   private async listContributions(projectId: string): Promise<ProjectContribution[]> {
@@ -551,7 +572,7 @@ class PostgreSqlWorkspaceRepository implements WorkspaceRepository {
       .leftJoin(profiles, eq(profiles.userId, users.id))
       .where(eq(projectMessages.projectId, projectId))
       .orderBy(desc(projectMessages.createdAt));
-    return rows.map(({ message, displayName, email }) => ({ id: message.id, projectId: message.projectId, authorId: message.authorId, authorName: displayName ?? email.split("@")[0] ?? "TOP member", body: message.body, createdAt: iso(message.createdAt) }));
+    return rows.map(({ message, displayName, email }) => ({ id: message.id, projectId: message.projectId, authorId: message.authorId, authorName: displayName ?? email.split("@")[0] ?? "TOP member", kind: message.kind as ProjectMessageKind, body: message.body, createdAt: iso(message.createdAt) }));
   }
 
   private async listProjectAudience(projectId: string, ownerId: string): Promise<string[]> {
@@ -630,6 +651,10 @@ function projectStateActivityTitle(status: WorkspaceProject["status"]): string {
 
 function contributionTypeLabel(type: ProjectContributionType): string {
   return { idea: "Idea", research: "Research", design: "Design", code: "Code", funding: "Funding", mentorship: "Mentorship", operations: "Operations", other: "Work" }[type];
+}
+
+function projectMessageKindLabel(kind: ProjectMessageKind): string {
+  return { update: "update", question: "question", decision: "decision", request: "request", celebration: "celebration" }[kind];
 }
 
 function iso(value: Date): string { return value.toISOString(); }

@@ -121,6 +121,7 @@ export type ProjectMilestoneStatus = "planned" | "completed";
 export type ProjectArtifactKind = "atelier" | "canvas" | "blueprint" | "note" | "link" | "other";
 export type ProjectMemberRole = "owner" | "contributor" | "mentor";
 export type ProjectContributionType = "idea" | "research" | "design" | "code" | "funding" | "mentorship" | "operations" | "other";
+export type ProjectMessageKind = "update" | "question" | "decision" | "request" | "celebration";
 export type ProjectActivityType = "project-started" | "project-state-updated" | "next-action-updated" | "milestone-added" | "milestone-completed" | "milestone-reopened" | "artifact-recorded" | "circle-updated" | "circle-message-sent" | "invitation-sent" | "invitation-accepted" | "member-role-updated" | "member-removed" | "contribution-recorded" | "review-recorded";
 
 export interface WorkspaceNodeData {
@@ -198,6 +199,7 @@ export interface ProjectMessage {
   projectId: string;
   authorId: string;
   authorName: string;
+  kind: ProjectMessageKind;
   body: string;
   createdAt: string;
 }
@@ -232,6 +234,11 @@ export interface TopNotification {
   href: string | null;
   readAt: string | null;
   createdAt: string;
+}
+
+export interface LiveSignal {
+  type?: string;
+  href?: string | null;
 }
 
 export interface ProjectActivity {
@@ -580,7 +587,7 @@ export function removeProjectCollaborator(projectId: string, memberId: string): 
   return request<void>(`/api/v1/workspace/projects/${encodeURIComponent(projectId)}/collaborators/${encodeURIComponent(memberId)}`, { method: "DELETE" });
 }
 
-export function createProjectMessage(projectId: string, input: { body: string }): Promise<{ message: ProjectMessage }> {
+export function createProjectMessage(projectId: string, input: { body: string; kind?: ProjectMessageKind }): Promise<{ message: ProjectMessage }> {
   return request<{ message: ProjectMessage }>(`/api/v1/workspace/projects/${encodeURIComponent(projectId)}/messages`, { method: "POST", body: input });
 }
 
@@ -596,10 +603,16 @@ export function getTopNotifications(): Promise<{ notifications: TopNotification[
   return request<{ notifications: TopNotification[] }>("/api/v1/workspace/notifications");
 }
 
-export function subscribeToTopSignals(onSignal: () => void): () => void {
+export function subscribeToTopSignals(onSignal: (signal: LiveSignal) => void): () => void {
   if (!apiBaseUrl || typeof EventSource === "undefined") return () => undefined;
   const source = new EventSource(`${apiBaseUrl}/api/v1/top/events`, { withCredentials: true });
-  source.addEventListener("signal", onSignal);
+  source.addEventListener("signal", (event) => {
+    try {
+      onSignal(JSON.parse((event as MessageEvent<string>).data) as LiveSignal);
+    } catch {
+      onSignal({});
+    }
+  });
   return () => source.close();
 }
 

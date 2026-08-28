@@ -17,6 +17,7 @@ import {
   type ProjectArtifactKind,
   type ProjectContributionType,
   type ProjectDirection,
+  type ProjectMessageKind,
   type WorkspaceProjectDetail,
   type WorkspaceProject
 } from "../../lib/api";
@@ -182,10 +183,14 @@ class WorkspaceEngine {
     this.notify("Member removed from this project circle.");
   }
 
-  public async sendProjectMessage(projectId: string, body: string): Promise<void> {
-    await createProjectMessage(projectId, { body });
+  public async sendProjectMessage(projectId: string, body: string, kind: ProjectMessageKind = "update"): Promise<void> {
+    await createProjectMessage(projectId, { body, kind });
     await this.loadProjectRoom(projectId, false);
     this.notify("Message sent to the project circle.");
+  }
+
+  public async refreshProjectDetail(projectId: string): Promise<void> {
+    await this.loadProjectRoom(projectId, false);
   }
 
   public async recordProjectContribution(projectId: string, input: { type: ProjectContributionType; description: string; evidenceUrl?: string }): Promise<string> {

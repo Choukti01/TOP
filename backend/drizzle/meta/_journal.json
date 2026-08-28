@@ -92,6 +92,13 @@
       "when": 1788307200000,
       "tag": "0012_public_authorship",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788393600000,
+      "tag": "0013_living_project_circle",
+      "breakpoints": true
     }
   ]
 }

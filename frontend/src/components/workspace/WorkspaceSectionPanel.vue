@@ -69,6 +69,7 @@
               <button type="button" @click="jumpToProjectStation('project-evidence')">Evidence</button>
               <button type="button" @click="jumpToProjectStation('project-circle')">Circle</button>
               <button type="button" @click="jumpToProjectStation('project-conversation')">Conversation</button>
+              <button type="button" @click="jumpToProjectStation('project-review')">Review</button>
               <button type="button" @click="jumpToProjectStation('project-trail')">Trail</button>
             </nav>
 
@@ -109,7 +110,7 @@
                 </ul>
               </section>
 
-              <section class="project-station review-station">
+              <section id="project-review" class="project-station review-station">
                 <div class="station-heading"><span>WEEKLY REVIEW</span><h3>What moved forward?</h3><p>Keep a short record while the work is still fresh. This is for learning, not performance.</p></div>
                 <form class="review-composer" @submit.prevent="recordReview">
                   <label><span>WHAT MOVED?</span><textarea v-model.trim="reviewProudOf" maxlength="800" placeholder="Name the action, decision, or piece of work that mattered."></textarea></label>
@@ -136,6 +137,8 @@
 
               <section id="project-circle" class="project-station circle-station">
                 <div class="station-heading"><span>PROJECT CIRCLE</span><h3>Build with people, not an audience.</h3><p>Only people you choose can enter this project. Contributors and mentors can add their own trace without taking control of the work.</p></div>
+                <div class="circle-pulse" aria-label="Live project circle summary"><div><span><i aria-hidden="true"></i> CIRCLE PULSE</span><strong>{{ activeProjectDetail.collaborators.length }} {{ activeProjectDetail.collaborators.length === 1 ? 'person' : 'people' }} holding this work</strong><p>{{ activeProjectDetail.activity.length }} honest movements and {{ activeProjectDetail.messages.length }} conversations are held with the project.</p></div><dl><div><dt>TRACES</dt><dd>{{ activeProjectDetail.artifacts.length + activeProjectDetail.contributions.length }}</dd></div><div><dt>REVIEWS</dt><dd>{{ activeProjectDetail.reviews.length }}</dd></div></dl></div>
+                <p v-if="liveCircleNotice" class="live-circle-notice" role="status"><i aria-hidden="true"></i>{{ liveCircleNotice }}</p>
                 <ul class="collaborator-list"><li v-for="collaborator in activeProjectDetail.collaborators" :key="collaborator.userId"><i><img v-if="collaborator.avatarDataUrl" :src="collaborator.avatarDataUrl" :alt="`${collaborator.displayName}'s profile`" /><b v-else>{{ collaboratorInitials(collaborator.displayName) }}</b></i><div><strong>{{ collaborator.displayName }}</strong><small>{{ collaboratorRoleLabel(collaborator.role) }}</small></div><em v-if="collaborator.role === 'owner'">◈</em><template v-else-if="activeProjectDetail.access.canManage"><label class="member-role"><span class="sr-only">Role for {{ collaborator.displayName }}</span><select :value="collaborator.role" :disabled="savingMemberId === collaborator.userId" @change="changeCollaboratorRole(collaborator.userId, ($event.target as HTMLSelectElement).value as 'contributor' | 'mentor')"><option value="contributor">Contributor</option><option value="mentor">Mentor</option></select></label><button class="member-remove" type="button" :disabled="savingMemberId === collaborator.userId" @click="removeCollaborator(collaborator.userId, collaborator.displayName)">Remove</button></template><em v-else>{{ collaborator.role === 'mentor' ? '✦' : '↗' }}</em></li></ul>
                 <section v-if="activeProjectDetail.access.canManage && activeProjectDetail.pendingInvitations.length > 0" class="pending-invitations"><span>AWAITING THEIR YES</span><ul><li v-for="invitation in activeProjectDetail.pendingInvitations" :key="invitation.id"><div><strong>{{ invitation.displayName }}</strong><small>Invited as {{ collaboratorRoleLabel(invitation.role).toLowerCase() }}</small></div><time :datetime="invitation.createdAt">Sent {{ formatActivityTime(invitation.createdAt) }}</time></li></ul></section>
                 <form v-if="activeProjectDetail.access.canManage" class="invite-composer" @submit.prevent="inviteCollaborator">
@@ -149,11 +152,12 @@
               <section id="project-conversation" class="project-station conversation-station">
                 <div class="station-heading"><span>PROJECT CONVERSATION</span><h3>Talk where the work lives.</h3><p>Keep decisions, questions, and practical updates close to the project—not lost inside a public feed or a random chat.</p></div>
                 <form class="message-composer" @submit.prevent="sendProjectMessage">
-                  <textarea v-model.trim="messageDraft" maxlength="2000" aria-label="Message to the project circle" placeholder="Ask, update, decide, or offer the next useful thought…"></textarea>
-                  <div><small>{{ messageDraft.length }}/2000 · Only this project circle can read it.</small><button class="secondary-action" type="submit" :disabled="savingMessage || messageDraft.length < 1">{{ savingMessage ? 'Sending…' : 'Send to circle' }} <span>↗</span></button></div>
+                  <div class="message-intents" aria-label="Choose the purpose of your message"><button v-for="intent in messageIntents" :key="intent.kind" :class="{ selected: messageKind === intent.kind }" type="button" @click="messageKind = intent.kind">{{ intent.label }}</button></div>
+                  <textarea v-model.trim="messageDraft" maxlength="2000" aria-label="Message to the project circle" :placeholder="messageIntent.placeholder"></textarea>
+                  <div><small>{{ messageIntent.label }} · {{ messageDraft.length }}/2000 · Only this project circle can read it.</small><button class="secondary-action" type="submit" :disabled="savingMessage || messageDraft.length < 1">{{ savingMessage ? 'Sending…' : `Share ${messageIntent.label.toLowerCase()}` }}</button></div>
                 </form>
                 <p v-if="activeProjectDetail.messages.length === 0" class="honest-empty">No messages yet. The project stays quiet until there is something worth saying.</p>
-                <ol v-else class="message-list"><li v-for="message in activeProjectDetail.messages" :key="message.id"><div><strong>{{ message.authorName }}</strong><time :datetime="message.createdAt">{{ formatActivityTime(message.createdAt) }}</time></div><p>{{ message.body }}</p></li></ol>
+                <ol v-else class="message-list"><li v-for="message in activeProjectDetail.messages" :key="message.id"><div><strong>{{ message.authorName }}</strong><time :datetime="message.createdAt">{{ formatActivityTime(message.createdAt) }}</time></div><span class="message-kind">{{ messageKindLabel(message.kind) }}</span><p>{{ message.body }}</p></li></ol>
               </section>
             </div>
 
@@ -188,9 +192,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 
-import { getFocusSuggestion, saveWorkspaceReflection, type FocusSuggestion, type ProjectArtifactKind, type ProjectContributionType, type ProjectDirection, type ProjectMemberRole, type ProjectStatus } from "../../lib/api";
+import { getFocusSuggestion, saveWorkspaceReflection, subscribeToTopSignals, type FocusSuggestion, type ProjectArtifactKind, type ProjectContributionType, type ProjectDirection, type ProjectMemberRole, type ProjectMessageKind, type ProjectStatus } from "../../lib/api";
 import { getLocalArtifactPreview } from "../../lib/artifactVault";
 import Atelier from "./Atelier.vue";
 import BlueprintBuilder from "./BlueprintBuilder.vue";
@@ -229,6 +233,16 @@ const savingInvite = ref(false);
 const savingMemberId = ref("");
 const messageDraft = ref("");
 const savingMessage = ref(false);
+const messageKind = ref<ProjectMessageKind>("update");
+const liveCircleNotice = ref("");
+const messageIntents: Array<{ kind: ProjectMessageKind; label: string; placeholder: string }> = [
+  { kind: "update", label: "Update", placeholder: "Share what moved, what changed, or what the circle should know…" },
+  { kind: "question", label: "Question", placeholder: "Ask the clearest question that would unlock the next move…" },
+  { kind: "decision", label: "Decision", placeholder: "Record a decision so the work does not lose its direction…" },
+  { kind: "request", label: "Request", placeholder: "Name the specific help, skill, or resource you need…" },
+  { kind: "celebration", label: "Celebrate", placeholder: "Name a piece of effort or progress worth recognising…" }
+];
+let liveCircleNoticeTimer: ReturnType<typeof window.setTimeout> | undefined;
 const isNativeSection = computed(() => ["Seeds", "Atelier", "Studio", "Blueprint", "Signals"].includes(WorkspaceState.activeSection));
 
 const copy = {
@@ -249,6 +263,7 @@ const activeProjectDetail = computed(() => {
   return projectId ? WorkspaceState.projectDetails[projectId] ?? null : null;
 });
 const completedMilestoneCount = computed(() => activeProjectDetail.value?.milestones.filter((milestone) => milestone.status === "completed").length ?? 0);
+const messageIntent = computed(() => messageIntents.find((intent) => intent.kind === messageKind.value) ?? messageIntents[0]!);
 const isInviteEmailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.value));
 const activeCopy = computed(() => copy[WorkspaceState.activeSection as keyof typeof copy] ?? copy.Projects);
 const eyebrow = computed(() => activeProject.value ? `PROJECT / ${directionLabel(activeProject.value.direction)}` : activeCopy.value[0]);
@@ -257,6 +272,21 @@ const description = computed(() => activeProject.value?.purpose ?? activeCopy.va
 const exitLabel = computed(() => WorkspaceState.activeSection === "Project" ? "Back to projects" : "Back to the field");
 
 watch(activeProject, (project) => { nextActionDraft.value = project?.nextAction ?? ""; }, { immediate: true });
+watch(() => WorkspaceState.activeProjectId, () => { liveCircleNotice.value = ""; });
+
+const stopLiveCircleSignals = subscribeToTopSignals((signal) => {
+  const projectId = WorkspaceState.activeProjectId;
+  if (WorkspaceState.activeSection !== "Project" || !projectId || !signal.href?.includes(`project=${projectId}`)) return;
+  void workspaceEngine.refreshProjectDetail(projectId);
+  liveCircleNotice.value = signal.type === "project-circle-message" ? "A new circle message arrived live." : "New movement arrived in this project circle.";
+  if (liveCircleNoticeTimer) window.clearTimeout(liveCircleNoticeTimer);
+  liveCircleNoticeTimer = window.setTimeout(() => { liveCircleNotice.value = ""; }, 4_000);
+});
+
+onUnmounted(() => {
+  stopLiveCircleSignals();
+  if (liveCircleNoticeTimer) window.clearTimeout(liveCircleNoticeTimer);
+});
 
 function beginProject(): void { WorkspaceState.projectComposerOpen = true; workspaceEngine.triggerMotion("action"); }
 function openProject(id: string): void { focus.value = null; workspaceEngine.openProject(id); }
@@ -273,6 +303,7 @@ function stateCopy(status: ProjectStatus): string { return { planning: "This is 
 function artifactKindLabel(kind: ProjectArtifactKind): string { return { atelier: "Atelier", canvas: "Canvas", blueprint: "Blueprint", note: "Note", link: "Link", other: "Work" }[kind]; }
 function contributionTypeLabel(type: ProjectContributionType): string { return { idea: "Idea", research: "Research", design: "Design", code: "Code", funding: "Funding", mentorship: "Mentorship", operations: "Operations", other: "Work" }[type]; }
 function collaboratorRoleLabel(role: ProjectMemberRole): string { return { owner: "Project owner", contributor: "Contributor", mentor: "Mentor" }[role]; }
+function messageKindLabel(kind: ProjectMessageKind): string { return { update: "Update", question: "Question", decision: "Decision", request: "Request", celebration: "Celebration" }[kind]; }
 function collaboratorInitials(name: string): string { return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "T"; }
 function artifactPreview(artifactId: string): string | null { return getLocalArtifactPreview(artifactId); }
 function formatActivityTime(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? "Now" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date); }
@@ -288,7 +319,7 @@ async function recordReview(): Promise<void> { if (!activeProject.value || revie
 async function inviteCollaborator(): Promise<void> { if (!activeProject.value || !isInviteEmailValid.value) return; savingInvite.value = true; try { await workspaceEngine.inviteCollaborator(activeProject.value.id, { email: inviteEmail.value, role: inviteRole.value }); inviteEmail.value = ""; } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That invitation could not be completed."); } finally { savingInvite.value = false; } }
 async function changeCollaboratorRole(memberId: string, role: "contributor" | "mentor"): Promise<void> { if (!activeProject.value) return; savingMemberId.value = memberId; try { await workspaceEngine.updateCollaboratorRole(activeProject.value.id, memberId, role); } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That project role could not be updated."); } finally { savingMemberId.value = ""; } }
 async function removeCollaborator(memberId: string, displayName: string): Promise<void> { if (!activeProject.value || !window.confirm(`Remove ${displayName} from this project circle? Their work already recorded in the project will remain.`)) return; savingMemberId.value = memberId; try { await workspaceEngine.removeCollaborator(activeProject.value.id, memberId); } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That member could not be removed."); } finally { savingMemberId.value = ""; } }
-async function sendProjectMessage(): Promise<void> { if (!activeProject.value || messageDraft.value.length < 1) return; savingMessage.value = true; try { await workspaceEngine.sendProjectMessage(activeProject.value.id, messageDraft.value); messageDraft.value = ""; } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That message could not be sent."); } finally { savingMessage.value = false; } }
+async function sendProjectMessage(): Promise<void> { if (!activeProject.value || messageDraft.value.length < 1) return; savingMessage.value = true; try { await workspaceEngine.sendProjectMessage(activeProject.value.id, messageDraft.value, messageKind.value); messageDraft.value = ""; messageKind.value = "update"; } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That message could not be sent."); } finally { savingMessage.value = false; } }
 async function recordContribution(): Promise<void> { if (!activeProject.value || contributionDescription.value.length < 3) return; savingContribution.value = true; try { await workspaceEngine.recordProjectContribution(activeProject.value.id, { type: contributionType.value, description: contributionDescription.value, ...(contributionEvidenceUrl.value ? { evidenceUrl: contributionEvidenceUrl.value } : {}) }); contributionDescription.value = ""; contributionEvidenceUrl.value = ""; contributionType.value = "idea"; } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "That contribution could not be recorded."); } finally { savingContribution.value = false; } }
 async function submitReflection(): Promise<void> { reflectionMessage.value = ""; try { reflectionSaving.value = true; const result = await saveWorkspaceReflection(reflection.value); reflectionMessage.value = result.message; reflection.value = ""; workspaceEngine.notify("Reflection kept in your practice."); } catch (error) { workspaceEngine.notify(error instanceof Error ? error.message : "Your reflection could not be saved."); } finally { reflectionSaving.value = false; } }
 </script>
@@ -306,4 +337,5 @@ async function submitReflection(): Promise<void> { reflectionMessage.value = "";
 .activity-list .activity-invitation-sent,.activity-list .activity-invitation-accepted,.activity-list .activity-member-role-updated { background:var(--top-violet); box-shadow:0 0 12px rgba(156,124,255,.65); }.activity-list .activity-member-removed { background:var(--top-pink); box-shadow:0 0 12px rgba(255,114,189,.65); }
 .conversation-station { background:radial-gradient(circle at 86% 10%,rgba(98,230,255,.14),transparent 28%),linear-gradient(145deg,rgba(11,30,54,.85),rgba(5,9,23,.9)); grid-column:span 2; }.message-composer { display:grid; gap:10px; margin-top:22px; }.message-composer textarea { background:rgba(3,5,17,.68); border:1px solid rgba(98,230,255,.28); border-radius:14px 14px 4px 14px; box-sizing:border-box; color:var(--top-ink); font:inherit; min-height:94px; outline:0; padding:12px; resize:vertical; width:100%; }.message-composer textarea:focus { border-color:var(--top-cyan); box-shadow:0 0 0 3px rgba(98,230,255,.1); }.message-composer > div { align-items:center; display:flex; gap:12px; justify-content:space-between; }.message-composer small { color:var(--top-muted); font-family:var(--top-mono); font-size:8px; line-height:1.5; }.message-list { display:grid; gap:9px; list-style:none; margin:21px 0 0; padding:0; }.message-list li { background:rgba(3,5,17,.34); border-left:1px solid var(--top-cyan); padding:12px; }.message-list li > div { align-items:center; display:flex; gap:10px; justify-content:space-between; }.message-list strong { color:var(--top-ink); font-size:11px; }.message-list time { color:var(--top-muted); font-family:var(--top-mono); font-size:8px; }.message-list p { color:rgba(225,234,255,.8); font-size:11px; line-height:1.62; margin:8px 0 0; white-space:pre-wrap; }.activity-list .activity-circle-message-sent { background:var(--top-cyan); box-shadow:0 0 12px rgba(98,230,255,.65); } @media (max-width:800px) { .conversation-station { grid-column:span 1; }.message-composer > div { align-items:flex-start; flex-direction:column; } }
 .project-jumps { display:flex; flex-wrap:wrap; gap:7px; margin-top:14px; }.project-jumps button { background:rgba(98,230,255,.06); border:1px solid rgba(98,230,255,.28); border-radius:999px; color:var(--top-cyan); cursor:pointer; font-family:var(--top-mono); font-size:8px; padding:8px 10px; transition:.2s ease; }.project-jumps button:hover { background:rgba(98,230,255,.15); border-color:var(--top-cyan); transform:translateY(-1px); }.project-station { scroll-margin-top:32px; }
+.circle-pulse { align-items:stretch; background:rgba(4,7,23,.43); border:1px solid rgba(156,124,255,.3); border-radius:16px 16px 4px 16px; display:grid; gap:15px; grid-template-columns:minmax(0,1fr) auto; margin-top:22px; overflow:hidden; padding:14px; }.circle-pulse > div > span { color:var(--top-violet); display:block; font-family:var(--top-mono); font-size:8px; font-weight:800; letter-spacing:.13em; }.circle-pulse > div > span i,.live-circle-notice i { animation:pulse 1.4s ease-in-out infinite; background:var(--top-lime); border-radius:50%; box-shadow:0 0 11px var(--top-lime); display:inline-block; height:6px; margin-right:7px; width:6px; }.circle-pulse strong { color:var(--top-ink); display:block; font-size:12px; margin-top:9px; }.circle-pulse p { color:var(--top-muted); font-size:10px; line-height:1.55; margin-top:5px; }.circle-pulse dl { display:grid; gap:1px; grid-template-columns:repeat(2,minmax(62px,1fr)); margin:0; overflow:hidden; border:1px solid rgba(156,124,255,.2); border-radius:10px 10px 3px 10px; }.circle-pulse dl > div { background:rgba(156,124,255,.07); min-width:61px; padding:10px; }.circle-pulse dl > div + div { border-left:1px solid rgba(156,124,255,.2); }.circle-pulse dt { color:var(--top-violet); font-family:var(--top-mono); font-size:7px; font-weight:800; letter-spacing:.1em; }.circle-pulse dd { color:var(--top-ink); font-family:var(--top-display); font-size:22px; margin:5px 0 0; }.live-circle-notice { align-items:center; animation:surface-in .25s ease both; background:rgba(156,236,153,.09); border-left:1px solid var(--top-lime); color:var(--top-lime); display:flex; font-family:var(--top-mono); font-size:8px; letter-spacing:.04em; margin:14px 0 -4px; padding:9px 11px; }.message-intents { display:flex; flex-wrap:wrap; gap:7px; }.message-intents button { background:rgba(98,230,255,.05); border:1px solid rgba(98,230,255,.22); border-radius:999px; color:var(--top-muted); cursor:pointer; font-family:var(--top-mono); font-size:8px; padding:7px 10px; transition:.2s ease; }.message-intents button:hover,.message-intents button.selected { background:rgba(98,230,255,.14); border-color:var(--top-cyan); color:var(--top-ink); }.message-kind { color:var(--top-cyan); display:inline-block; font-family:var(--top-mono); font-size:7px; font-weight:800; letter-spacing:.11em; margin-top:8px; text-transform:uppercase; } @media (max-width:800px) { .circle-pulse { grid-template-columns:1fr; }.circle-pulse dl { width:100%; }.message-intents { gap:6px; }.message-intents button { padding:8px 9px; } }
 </style>

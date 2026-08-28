@@ -62,7 +62,8 @@ const invitationResponseInput = z.object({
 }).strict();
 
 const projectMessageInput = z.object({
-  body: z.string().trim().min(1).max(2_000)
+  body: z.string().trim().min(1).max(2_000),
+  kind: z.enum(["update", "question", "decision", "request", "celebration"]).default("update")
 }).strict();
 
 const contributionInput = z.object({
@@ -307,7 +308,7 @@ workspaceRouter.delete("/projects/:projectId/collaborators/:memberId", async (re
 workspaceRouter.post("/projects/:projectId/messages", async (request, response) => {
   const parsed = projectMessageInput.safeParse(request.body);
   if (!parsed.success) return response.status(422).json({ error: "Write a clear message for the project circle." });
-  const message = await workspace.addMessage(currentUser(response).id, request.params.projectId, parsed.data.body);
+  const message = await workspace.addMessage(currentUser(response).id, request.params.projectId, parsed.data.body, parsed.data.kind);
   if (!message) return response.status(404).json({ error: "You do not have access to speak in this project circle." });
   return response.status(201).json({ message });
 });

@@ -179,6 +179,17 @@ describe("TOP API", () => {
     expect(contribution.status).toBe(201);
     expect(contribution.body.contribution).toMatchObject({ type: "operations", contributorName: "You" });
 
+    const circleMessage = await request(app)
+      .post(`/api/v1/workspace/projects/${createdProjectId}/messages`)
+      .set("Cookie", sessionCookie)
+      .send({
+        kind: "decision",
+        body: "We will keep the first repair circle small, local, and practical."
+      });
+
+    expect(circleMessage.status).toBe(201);
+    expect(circleMessage.body.message).toMatchObject({ kind: "decision", authorName: "You" });
+
     const detail = await request(app).get(`/api/v1/workspace/projects/${createdProjectId}`).set("Cookie", sessionCookie);
 
     expect(detail.status).toBe(200);
@@ -187,13 +198,16 @@ describe("TOP API", () => {
     expect(detail.body.artifacts).toHaveLength(1);
     expect(detail.body.reviews).toHaveLength(1);
     expect(detail.body.contributions).toHaveLength(1);
+    expect(detail.body.messages).toHaveLength(1);
+    expect(detail.body.messages[0]).toMatchObject({ kind: "decision" });
     expect(detail.body.activity.map((activity: { type: string }) => activity.type)).toEqual(expect.arrayContaining([
       "project-started",
       "milestone-added",
       "milestone-completed",
       "artifact-recorded",
       "review-recorded",
-      "contribution-recorded"
+      "contribution-recorded",
+      "circle-message-sent"
     ]));
   });
 
@@ -230,7 +244,7 @@ describe("TOP API", () => {
     expect(dashboard.status).toBe(200);
     expect(dashboard.body.summary).toMatchObject({ projectCount: 1, completedMilestoneCount: 1, evidenceCount: 1 });
     expect(dashboard.body.openActions).toHaveLength(1);
-    expect(dashboard.body.recentActivity).toHaveLength(7);
+    expect(dashboard.body.recentActivity).toHaveLength(8);
   });
 
   it("lets an early idea become a tended seed before it becomes a project", async () => {

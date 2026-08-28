@@ -407,8 +407,12 @@ function isUniqueViolation(error: unknown): boolean {
   let current: unknown = error;
   for (let depth = 0; depth < 4 && current; depth += 1) {
     if (typeof current !== "object" || current === null) return false;
-    const candidate = current as { code?: unknown; cause?: unknown };
+    const candidate = current as { code?: unknown; cause?: unknown; message?: unknown };
     if (candidate.code === "23505") return true;
+    // Some postgres.js versions expose the constraint only in the message.
+    // Keep the check scoped to the users email constraint so unrelated unique
+    // failures are still surfaced for monitoring instead of being mislabeled.
+    if (typeof candidate.message === "string" && candidate.message.includes("users_email_unique")) return true;
     current = candidate.cause;
   }
   return false;

@@ -7,6 +7,7 @@ import {
   confirmTopEmail,
   registerTopAccount,
   updateTopProfile,
+  type AccountActionResponse,
   type AuthUser
 } from "./api";
 
@@ -47,13 +48,13 @@ export async function restoreTopSession(): Promise<AuthUser | null> {
   return request;
 }
 
-export async function createTopAccount(input: { email: string; displayName: string; password: string }): Promise<AuthUser> {
-  const { user } = await registerTopAccount(input);
+export async function createTopAccount(input: { email: string; displayName: string; password: string }): Promise<{ user: AuthUser; verificationDelivery?: AccountActionResponse["verificationDelivery"] }> {
+  const { user, verificationDelivery } = await registerTopAccount(input);
   beginAuthenticatedSession();
   authState.user = user;
   authState.status = "authenticated";
   saveTopAvatar(user.avatarDataUrl);
-  return user;
+  return { user, verificationDelivery };
 }
 
 export async function verifyTopEmail(token: string): Promise<AuthUser> {

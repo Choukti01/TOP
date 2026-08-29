@@ -132,9 +132,9 @@ async function submit(): Promise<void> {
       return;
     }
     if (isRegistering.value) {
-      await createTopAccount({ email: email.value, displayName: displayName.value, password: password.value });
+      const registration = await createTopAccount({ email: email.value, displayName: displayName.value, password: password.value });
       const next = typeof route.query.next === "string" && route.query.next.startsWith("/") && !route.query.next.startsWith("//") ? route.query.next : "/onboarding";
-      await router.push({ path: "/verify-email", query: { next, fresh: "1" } });
+      await router.push({ path: "/verify-email", query: { next, fresh: "1", ...(registration.verificationDelivery ? { delivery: registration.verificationDelivery } : {}) } });
       return;
     }
     const user = await signInToTop({ email: email.value, password: password.value });

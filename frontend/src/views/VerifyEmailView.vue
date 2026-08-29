@@ -40,6 +40,8 @@ const password = ref("");
 const notice = ref("");
 const error = ref("");
 
+const initialDelivery = typeof route.query.delivery === "string" ? route.query.delivery : "";
+
 function nextPath(): string {
   const next = typeof route.query.next === "string" ? route.query.next : "/top";
   return next.startsWith("/") && !next.startsWith("//") ? next : "/top";
@@ -81,6 +83,9 @@ onMounted(async () => {
     if (!user) { await router.replace({ path: "/join", query: { next: nextPath() } }); return; }
     if (user.emailVerified) { await router.replace(nextPath()); return; }
     email.value = user.email;
+    if (initialDelivery && initialDelivery !== "sent") {
+      error.value = "TOP saved your account safely, but the verification message was not delivered. Use “Send another link” to try again.";
+    }
   } catch (reason) { error.value = reason instanceof Error ? reason.message : "That verification link is no longer valid. Request a new one and try again."; }
   finally { loading.value = false; }
 });

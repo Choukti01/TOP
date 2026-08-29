@@ -77,7 +77,7 @@ export function createAuthRouter(auth: AuthService, config: AppConfig): Router {
       response.setHeader("Set-Cookie", result.cookie);
       return response.status(201).json({
         user: result.user,
-        message: "Your TOP account is ready. Check your email to verify it.",
+        message: verificationDeliveryMessage(result.verification.delivery),
         verificationDelivery: result.verification.delivery,
         ...(result.verification.developmentActionUrl ? { developmentActionUrl: result.verification.developmentActionUrl } : {})
       });
@@ -116,6 +116,12 @@ export function createAuthRouter(auth: AuthService, config: AppConfig): Router {
   router.post("/email-verification/resend", requireAuthenticatedUser(auth), verificationLimit, async (_request, response) => {
     const result = await auth.resendVerification(currentUser(response).id);
     if (!result) return response.status(200).json({ message: "This TOP account is already verified." });
+    if (result.delivery !== "sent") {
+      return response.status(503).json({
+        error: "TOP could not deliver the verification email yet. Please try again in a moment.",
+        verificationDelivery: result.delivery
+      });
+    }
     return response.status(202).json({
       message: "A fresh verification link is on its way to your email.",
       verificationDelivery: result.delivery,
@@ -192,6 +198,11 @@ export function requireAuthenticatedUser(auth: AuthService): RequestHandler {
     response.locals.authUser = user;
     return next();
   };
+}
+
+function verificationDeliveryMessage(delivery: "sent" | "development" | "not-configured" | "failed"): string {
+  if (delivery === "sent") return "Your TOP account is ready. Check your email to verify it.";
+  return "Your TOP account was created, but the verification email could not be delivered yet. TOP will let you retry securely.";
 }
 
 export function requireVerifiedUser(auth: AuthService): RequestHandler {

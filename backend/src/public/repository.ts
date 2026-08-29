@@ -15,12 +15,12 @@ export interface PublicComment { id: string; postId: string; parentCommentId: st
 export interface PublicReactionPerson { reaction: PublicReaction; person: PublicPersonSummary; }
 export interface PublicPostBridge { seedId: string | null; projectId: string | null; circleOpen: boolean; offerStatus: SignalOfferStatus | null; offerKind: SignalOfferKind | null; pendingOfferCount: number; }
 export interface PublicPost { id: string; kind: PublicPostKind; title: string; body: string; createdAt: string; updatedAt: string; author: PublicPersonSummary; reactions: Record<PublicReaction, number>; reactionPeople: PublicReactionPerson[]; viewerReaction: PublicReaction | null; comments: PublicComment[]; commentCount: number; bridge: PublicPostBridge; }
-export interface PublicProfile extends PublicPersonSummary { biography: string | null; stats: { projectCount: number; completedMilestoneCount: number; evidenceCount: number; connectionCount: number }; connectionStatus: "self" | "none" | "pending-sent" | "pending-received" | "connected"; sharedPosts: PublicPost[]; }
+export interface PublicProfile extends PublicPersonSummary { biography: string | null; stats: { projectCount: number; completedMilestoneCount: number; evidenceCount: number; connectionCount: number }; connectionStatus: "self" | "none" | "pending-sent" | "pending-received" | "connected"; connectionRequestId: string | null; connections: PublicPersonSummary[]; sharedPosts: PublicPost[]; }
 export interface ConnectionRequest { id: string; createdAt: string; sender: PublicPersonSummary; }
 export interface DirectMessage { id: string; senderId: string; recipientId: string; body: string; createdAt: string; sender: PublicPersonSummary; }
 export interface DirectConversation { person: PublicPersonSummary; lastMessage: string; lastMessageAt: string; unreadCount: number; }
 export interface SignalOffer { id: string; postId: string; postTitle: string; projectId: string | null; kind: SignalOfferKind; note: string; createdAt: string; sender: PublicPersonSummary; }
-export interface PublicSearchPerson extends PublicPersonSummary { connectionStatus: PublicProfile["connectionStatus"]; }
+export interface PublicSearchPerson extends PublicPersonSummary { connectionStatus: PublicProfile["connectionStatus"]; connectionRequestId: string | null; }
 export interface PublicSearchResults { people: PublicSearchPerson[]; posts: PublicPost[]; }
 export type SafetyReportTarget = "person" | "post" | "comment" | "message";
 export type SafetyReportReason = "spam" | "harassment" | "hate" | "sexual-content" | "privacy" | "self-harm" | "other";
@@ -33,6 +33,7 @@ export interface PublicRepository {
   updatePost(userId: string, postId: string, input: { kind: PublicPostKind; title: string; body: string }): Promise<PublicPost | null>;
   deletePost(userId: string, postId: string): Promise<boolean>;
   reactToPost(userId: string, postId: string, reaction: PublicReaction): Promise<PublicPost | null>;
+  removeReaction(userId: string, postId: string): Promise<PublicPost | null>;
   addComment(userId: string, postId: string, input: { body: string; parentCommentId: string | null }): Promise<PublicComment | null>;
   updateComment(userId: string, postId: string, commentId: string, body: string): Promise<PublicComment | null>;
   deleteComment(userId: string, postId: string, commentId: string): Promise<boolean>;
@@ -68,6 +69,7 @@ class MemoryPublicRepository implements PublicRepository {
   public async updatePost(_userId: string, _postId: string, _input: { kind: PublicPostKind; title: string; body: string }) { return null; }
   public async deletePost(_userId: string, _postId: string) { return false; }
   public async reactToPost(_userId: string, _postId: string, _reaction: PublicReaction) { return null; }
+  public async removeReaction(_userId: string, _postId: string) { return null; }
   public async addComment(_userId: string, _postId: string, _input: { body: string; parentCommentId: string | null }) { return null; }
   public async updateComment(_userId: string, _postId: string, _commentId: string, _body: string) { return null; }
   public async deleteComment(_userId: string, _postId: string, _commentId: string) { return false; }
@@ -255,6 +257,13 @@ class PostgreSqlPublicRepository implements PublicRepository {
     return this.getPost(userId, postId);
   }
 
+  public async removeReaction(userId: string, postId: string): Promise<PublicPost | null> {
+    const [post] = await this.database.select({ id: publicPosts.id, authorId: publicPosts.authorId }).from(publicPosts).where(eq(publicPosts.id, postId));
+    if (!post || await this.isBlockedBetween(userId, post.authorId)) return null;
+    await this.database.delete(postReactions).where(and(eq(postReactions.postId, postId), eq(postReactions.userId, userId)));
+    return this.getPost(userId, postId);
+  }
+
   public async addComment(userId: string, postId: string, input: { body: string; parentCommentId: string | null }): Promise<PublicComment | null> {
     const [post] = await this.database.select({ id: publicPosts.id, authorId: publicPosts.authorId, title: publicPosts.title }).from(publicPosts).where(eq(publicPosts.id, postId));
     if (!post || await this.isBlockedBetween(userId, post.authorId)) return null;
@@ -287,9 +296,22 @@ class PostgreSqlPublicRepository implements PublicRepository {
   }
 
   public async deleteComment(userId: string, postId: string, commentId: string): Promise<boolean> {
-    const deleted = await this.database.delete(postComments)
-      .where(and(eq(postComments.id, commentId), eq(postComments.postId, postId), eq(postComments.authorId, userId)))
-      .returning({ id: postComments.id });
+    const [root] = await this.database.select({ id: postComments.id }).from(postComments)
+      .where(and(eq(postComments.id, commentId), eq(postComments.postId, postId), eq(postComments.authorId, userId)));
+    if (!root) return false;
+    const comments = await this.database.select({ id: postComments.id, parentCommentId: postComments.parentCommentId }).from(postComments).where(eq(postComments.postId, postId));
+    const descendants = new Set<string>([root.id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const comment of comments) {
+        if (comment.parentCommentId && descendants.has(comment.parentCommentId) && !descendants.has(comment.id)) {
+          descendants.add(comment.id);
+          changed = true;
+        }
+      }
+    }
+    const deleted = await this.database.delete(postComments).where(inArray(postComments.id, [...descendants])).returning({ id: postComments.id });
     return deleted.length > 0;
   }
 
@@ -300,27 +322,40 @@ class PostgreSqlPublicRepository implements PublicRepository {
     const [profile] = await this.database.select({ biography: profiles.biography }).from(profiles).where(eq(profiles.userId, personId));
     const ownedProjects = await this.database.select({ id: projects.id }).from(projects).where(eq(projects.ownerId, personId));
     const ids = ownedProjects.map((project) => project.id);
-    const [milestones, artifacts, connections] = await Promise.all([
+    const [milestones, artifacts, connectionRows] = await Promise.all([
       ids.length ? this.database.select({ status: projectMilestones.status }).from(projectMilestones).where(inArray(projectMilestones.projectId, ids)) : Promise.resolve([]),
       ids.length ? this.database.select({ id: projectArtifacts.id }).from(projectArtifacts).where(inArray(projectArtifacts.projectId, ids)) : Promise.resolve([]),
-      this.database.select({ id: connectionRequests.id }).from(connectionRequests).where(and(eq(connectionRequests.status, "accepted"), or(eq(connectionRequests.senderId, personId), eq(connectionRequests.recipientId, personId))))
+      this.database.select({ senderId: connectionRequests.senderId, recipientId: connectionRequests.recipientId, updatedAt: connectionRequests.updatedAt }).from(connectionRequests).where(and(eq(connectionRequests.status, "accepted"), or(eq(connectionRequests.senderId, personId), eq(connectionRequests.recipientId, personId)))).orderBy(desc(connectionRequests.updatedAt))
     ]);
     let connectionStatus: PublicProfile["connectionStatus"] = viewerId === personId ? "self" : "none";
+    let connectionRequestId: string | null = null;
     if (viewerId !== personId) {
       const [request] = await this.database.select().from(connectionRequests).where(or(and(eq(connectionRequests.senderId, viewerId), eq(connectionRequests.recipientId, personId)), and(eq(connectionRequests.senderId, personId), eq(connectionRequests.recipientId, viewerId))));
+      connectionRequestId = request?.id ?? null;
       if (request?.status === "accepted") connectionStatus = "connected";
       else if (request?.status === "pending") connectionStatus = request.senderId === viewerId ? "pending-sent" : "pending-received";
     }
+    const connectionIds = connectionRows.map((connection) => connection.senderId === personId ? connection.recipientId : connection.senderId);
+    const hiddenConnections = await this.hiddenPersonIds(viewerId, connectionIds);
+    const visibleConnectionIds = connectionIds.filter((id) => !hiddenConnections.has(id));
+    const connectionPeople = visibleConnectionIds.length ? await this.database.select({ id: users.id, displayName: profiles.displayName, fieldName: profiles.fieldName, location: profiles.location, avatarDataUrl: profiles.avatarDataUrl, memberSince: users.createdAt }).from(users).leftJoin(profiles, eq(profiles.userId, users.id)).where(inArray(users.id, visibleConnectionIds)) : [];
+    const peopleById = new Map(connectionPeople.map((connection) => [connection.id, connection]));
+    const connections = visibleConnectionIds.slice(0, 18).flatMap((id) => {
+      const connection = peopleById.get(id);
+      return connection ? [{ id: connection.id, displayName: connection.displayName ?? "TOP member", fieldName: connection.fieldName, location: connection.location, avatarDataUrl: connection.avatarDataUrl, memberSince: iso(connection.memberSince) }] : [];
+    });
     const sharedRows = await this.database.select({ post: publicPosts, authorId: users.id, displayName: profiles.displayName, fieldName: profiles.fieldName, location: profiles.location, avatarDataUrl: profiles.avatarDataUrl, memberSince: users.createdAt }).from(publicPosts).innerJoin(users, eq(users.id, publicPosts.authorId)).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(publicPosts.authorId, personId)).orderBy(desc(publicPosts.createdAt)).limit(20);
-    return { ...person, biography: profile?.biography ?? null, stats: { projectCount: ids.length, completedMilestoneCount: milestones.filter((milestone) => milestone.status === "completed").length, evidenceCount: artifacts.length, connectionCount: connections.length }, connectionStatus, sharedPosts: await this.hydratePosts(viewerId, sharedRows) };
+    return { ...person, biography: profile?.biography ?? null, stats: { projectCount: ids.length, completedMilestoneCount: milestones.filter((milestone) => milestone.status === "completed").length, evidenceCount: artifacts.length, connectionCount: connectionRows.length }, connectionStatus, connectionRequestId, connections, sharedPosts: await this.hydratePosts(viewerId, sharedRows) };
   }
 
   public async createConnectionRequest(senderId: string, recipientId: string): Promise<boolean> {
     if (senderId === recipientId || await this.isBlockedBetween(senderId, recipientId) || !(await this.personSummary(recipientId))) return false;
-    const [existing] = await this.database.select({ id: connectionRequests.id }).from(connectionRequests).where(or(and(eq(connectionRequests.senderId, senderId), eq(connectionRequests.recipientId, recipientId)), and(eq(connectionRequests.senderId, recipientId), eq(connectionRequests.recipientId, senderId))));
-    if (existing) return false;
+    const [existing] = await this.database.select().from(connectionRequests).where(or(and(eq(connectionRequests.senderId, senderId), eq(connectionRequests.recipientId, recipientId)), and(eq(connectionRequests.senderId, recipientId), eq(connectionRequests.recipientId, senderId))));
+    if (existing?.status === "accepted" || existing?.status === "pending") return false;
     const now = new Date();
-    const [request] = await this.database.insert(connectionRequests).values({ senderId, recipientId, status: "pending", createdAt: now, updatedAt: now }).returning();
+    const [request] = existing
+      ? await this.database.update(connectionRequests).set({ senderId, recipientId, status: "pending", updatedAt: now }).where(eq(connectionRequests.id, existing.id)).returning()
+      : await this.database.insert(connectionRequests).values({ senderId, recipientId, status: "pending", createdAt: now, updatedAt: now }).returning();
     if (!request) throw new Error("TOP could not send that connection invitation.");
     const sender = await this.personSummary(senderId);
     await this.createNotification(recipientId, request.id, "connection-request", `${sender?.displayName ?? "A TOP member"} wants to connect`, "Review this request from your Profile → Signals panel.", `/profile?panel=signals&connection=${request.id}`, now);
@@ -430,7 +465,7 @@ class PostgreSqlPublicRepository implements PublicRepository {
       let connectionStatus: PublicProfile["connectionStatus"] = person.id === viewerId ? "self" : "none";
       if (relationship?.status === "accepted") connectionStatus = "connected";
       else if (relationship?.status === "pending") connectionStatus = relationship.senderId === viewerId ? "pending-sent" : "pending-received";
-      return { id: person.id, displayName: person.displayName ?? "TOP member", fieldName: person.fieldName, location: person.location, avatarDataUrl: person.avatarDataUrl, memberSince: iso(person.memberSince), connectionStatus };
+      return { id: person.id, displayName: person.displayName ?? "TOP member", fieldName: person.fieldName, location: person.location, avatarDataUrl: person.avatarDataUrl, memberSince: iso(person.memberSince), connectionStatus, connectionRequestId: relationship?.id ?? null };
     });
   }
 

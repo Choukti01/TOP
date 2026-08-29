@@ -99,6 +99,12 @@ export function createTopRouter(auth: AuthService, config: Pick<AppConfig, "data
     return response.status(200).json({ post });
   });
 
+  router.delete("/posts/:postId/reactions", responseLimit, async (request, response) => {
+    const post = await publicTop.removeReaction(currentUser(response).id, routeParam(request.params.postId));
+    if (!post) return response.status(404).json({ error: "That shared signal is no longer available." });
+    return response.status(200).json({ post });
+  });
+
   router.post("/posts/:postId/comments", responseLimit, async (request, response) => {
     const parsed = commentInput.safeParse(request.body);
     if (!parsed.success) return response.status(422).json({ error: "Write a real response before adding it." });

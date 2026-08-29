@@ -70,11 +70,14 @@ export interface PublicProfile extends PublicPersonSummary {
   biography: string | null;
   stats: { projectCount: number; completedMilestoneCount: number; evidenceCount: number; connectionCount: number };
   connectionStatus: "self" | "none" | "pending-sent" | "pending-received" | "connected";
+  connectionRequestId: string | null;
+  connections: PublicPersonSummary[];
   sharedPosts: PublicPost[];
 }
 
 export interface PublicSearchPerson extends PublicPersonSummary {
   connectionStatus: PublicProfile["connectionStatus"];
+  connectionRequestId: string | null;
 }
 
 export interface PublicSearchResults {
@@ -461,6 +464,10 @@ export function getPublicPost(postId: string): Promise<{ post: PublicPost }> {
 
 export function reactToPublicPost(postId: string, reaction: PublicReaction): Promise<{ post: PublicPost }> {
   return request<{ post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/reactions`, { method: "POST", body: { reaction } });
+}
+
+export function removePublicPostReaction(postId: string): Promise<{ post: PublicPost }> {
+  return request<{ post: PublicPost }>(`/api/v1/top/posts/${encodeURIComponent(postId)}/reactions`, { method: "DELETE" });
 }
 
 export function addPublicComment(postId: string, input: { body: string; parentCommentId?: string | null }): Promise<{ comment: PublicComment }> {

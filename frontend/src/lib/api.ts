@@ -377,10 +377,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return response.json() as Promise<T>;
 }
 
-export interface AccountActionResponse { message: string; developmentActionUrl?: string; }
+export interface AccountActionResponse { message: string; verificationDelivery?: "sent" | "development" | "not-configured" | "failed"; developmentActionUrl?: string; }
 
-export function registerTopAccount(input: { email: string; displayName: string; password: string }): Promise<{ user: AuthUser; message: string; developmentActionUrl?: string }> {
-  return request<{ user: AuthUser; message: string; developmentActionUrl?: string }>("/api/v1/auth/register", { method: "POST", body: input });
+export interface AuthProviders { google: boolean; }
+
+export function registerTopAccount(input: { email: string; displayName: string; password: string }): Promise<{ user: AuthUser; message: string; verificationDelivery?: AccountActionResponse["verificationDelivery"]; developmentActionUrl?: string }> {
+  return request<{ user: AuthUser; message: string; verificationDelivery?: AccountActionResponse["verificationDelivery"]; developmentActionUrl?: string }>("/api/v1/auth/register", { method: "POST", body: input });
 }
 
 export function loginTopAccount(input: { email: string; password: string }): Promise<{ user: AuthUser }> {
@@ -405,6 +407,20 @@ export function confirmTopEmail(token: string): Promise<{ user: AuthUser; messag
 
 export function resendTopEmailVerification(): Promise<AccountActionResponse> {
   return request<AccountActionResponse>("/api/v1/auth/email-verification/resend", { method: "POST" });
+}
+
+export function changeTopUnverifiedEmail(input: { email: string; password: string }): Promise<{ user: AuthUser; message: string; verificationDelivery?: AccountActionResponse["verificationDelivery"]; developmentActionUrl?: string }> {
+  return request<{ user: AuthUser; message: string; verificationDelivery?: AccountActionResponse["verificationDelivery"]; developmentActionUrl?: string }>("/api/v1/auth/email-verification/change-email", { method: "POST", body: input });
+}
+
+export function getTopAuthProviders(): Promise<AuthProviders> {
+  return request<AuthProviders>("/api/v1/auth/providers");
+}
+
+export function getTopGoogleSignInUrl(next: string): string {
+  if (!apiBaseUrl) throw new Error("Google sign-in will be available when TOP's secure account service is connected.");
+  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/top";
+  return `${apiBaseUrl}/api/v1/auth/google/start?next=${encodeURIComponent(safeNext)}`;
 }
 
 export function requestTopPasswordReset(email: string): Promise<AccountActionResponse> {

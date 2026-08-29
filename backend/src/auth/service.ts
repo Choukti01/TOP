@@ -4,7 +4,8 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import type { AppConfig } from "../config/env.js";
 import { createDatabase } from "../db/client.js";
-import { accountActionTokens, authSessions, profiles, users } from "../db/schema.js";
+import { accountActionTokens, authSessions, oauthIdentities, profiles, users } from "../db/schema.js";
+import type { GoogleIdentity } from "./googleOAuth.js";
 import { AccountEmailService, type AccountActionPurpose, type AccountEmailDelivery } from "../notifications/accountEmail.js";
 
 const scrypt = promisify(scryptCallback);
@@ -50,7 +51,7 @@ export interface AccountActionResult {
 }
 
 export class AuthError extends Error {
-  public constructor(public readonly code: "duplicate-email" | "invalid-credentials" | "too-many-attempts" | "invalid-action") {
+  public constructor(public readonly code: "duplicate-email" | "invalid-credentials" | "too-many-attempts" | "invalid-action" | "email-already-verified") {
     super(authErrorMessage(code));
   }
 }
@@ -60,6 +61,7 @@ export class AuthService {
   private readonly usersById = new Map<string, StoredUser>();
   private readonly sessions = new Map<string, StoredSession>();
   private readonly actionTokens = new Map<string, StoredActionToken>();
+  private readonly oauthUserIds = new Map<string, string>();
   private readonly loginAttempts = new Map<string, number[]>();
   private readonly signingSecret: string;
   private readonly actionSecret: string;
@@ -119,6 +121,37 @@ export class AuthService {
     return { user: toPublicUser(user), cookie: await this.createSession(user.id) };
   }
 
+  // OAuth identities are linked to a TOP account by Google's stable subject
+  // identifier, never by a browser-supplied email address alone.
+  public async signInWithGoogle(identity: GoogleIdentity): Promise<{ user: AuthenticatedUser; cookie: string; isNew: boolean }> {
+    if (this.database) return this.signInWithGoogleDatabase(identity);
+    const key = `google:${identity.subject}`;
+    const linkedUserId = this.oauthUserIds.get(key);
+    let user = linkedUserId ? this.usersById.get(linkedUserId) : undefined;
+    let isNew = false;
+
+    if (!user) {
+      user = this.usersByEmail.get(normalizeEmail(identity.email));
+      if (!user) {
+        const now = new Date().toISOString();
+        user = {
+          id: randomUUID(), email: normalizeEmail(identity.email), emailVerified: true,
+          displayName: identity.displayName.trim() || identity.email.split("@")[0]!,
+          biography: null, location: null, fieldName: null, avatarDataUrl: null, createdAt: now,
+          passwordHash: await hashPassword(randomBytes(48).toString("base64url"))
+        };
+        this.usersByEmail.set(user.email, user);
+        this.usersById.set(user.id, user);
+        isNew = true;
+      } else {
+        user.emailVerified = true;
+      }
+      this.oauthUserIds.set(key, user.id);
+    }
+
+    return { user: toPublicUser(user), cookie: await this.createSession(user.id), isNew };
+  }
+
   public async currentUser(cookieHeader: string | undefined): Promise<AuthenticatedUser | null> {
     const token = parseCookie(cookieHeader, "top_session");
     if (!token) return null;
@@ -163,6 +196,23 @@ export class AuthService {
     const user = await this.userById(userId);
     if (!user || user.emailVerified) return null;
     return this.issueAction(user, "verify-email");
+  }
+
+  // A person who mistyped an email while registering can correct it without
+  // opening access to a verified account's login identity.
+  public async changeUnverifiedEmail(userId: string, password: string, nextEmailInput: string): Promise<{ user: AuthenticatedUser; verification: AccountActionResult }> {
+    const nextEmail = normalizeEmail(nextEmailInput);
+    if (this.database) return this.changeUnverifiedEmailDatabase(userId, password, nextEmail);
+    const user = this.usersById.get(userId);
+    if (!user || !(await verifyPassword(password, user.passwordHash))) throw new AuthError("invalid-credentials");
+    if (user.emailVerified) throw new AuthError("email-already-verified");
+    const owner = this.usersByEmail.get(nextEmail);
+    if (owner && owner.id !== userId) throw new AuthError("duplicate-email");
+    this.usersByEmail.delete(user.email);
+    user.email = nextEmail;
+    this.usersByEmail.set(nextEmail, user);
+    const publicUser = toPublicUser(user);
+    return { user: publicUser, verification: await this.issueAction(publicUser, "verify-email") };
   }
 
   public async verifyEmail(rawToken: string): Promise<AuthenticatedUser | null> {
@@ -266,6 +316,62 @@ export class AuthService {
     return { user, cookie: await this.createSession(id), verification };
   }
 
+  private async signInWithGoogleDatabase(identity: GoogleIdentity): Promise<{ user: AuthenticatedUser; cookie: string; isNew: boolean }> {
+    if (!this.database) throw new Error("Database is unavailable.");
+    const email = normalizeEmail(identity.email);
+    const [linkedIdentity] = await this.database.select({ userId: oauthIdentities.userId }).from(oauthIdentities)
+      .where(and(eq(oauthIdentities.provider, "google"), eq(oauthIdentities.providerSubject, identity.subject)));
+    let user = linkedIdentity ? await this.userById(linkedIdentity.userId) : await this.userByEmail(email);
+    let isNew = false;
+
+    if (!user) {
+      const now = new Date();
+      const id = randomUUID();
+      try {
+        await this.database.insert(users).values({
+          id, email, passwordHash: await hashPassword(randomBytes(48).toString("base64url")),
+          emailVerifiedAt: now, createdAt: now, updatedAt: now
+        });
+        await this.database.insert(profiles).values({
+          userId: id, displayName: identity.displayName.trim() || email.split("@")[0]!, createdAt: now, updatedAt: now
+        });
+        user = { id, email, emailVerified: true, displayName: identity.displayName.trim() || email.split("@")[0]!, biography: null, location: null, fieldName: null, avatarDataUrl: null, createdAt: now.toISOString() };
+        isNew = true;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        user = await this.userByEmail(email);
+        if (!user) throw error;
+      }
+    }
+
+    if (!user.emailVerified) {
+      const now = new Date();
+      await this.database.update(users).set({ emailVerifiedAt: now, updatedAt: now }).where(eq(users.id, user.id));
+      user = { ...user, emailVerified: true };
+    }
+    await this.database.insert(oauthIdentities).values({
+      provider: "google", providerSubject: identity.subject, userId: user.id, email, createdAt: new Date(), updatedAt: new Date()
+    }).onConflictDoNothing();
+    return { user, cookie: await this.createSession(user.id), isNew };
+  }
+
+  private async changeUnverifiedEmailDatabase(userId: string, password: string, nextEmail: string): Promise<{ user: AuthenticatedUser; verification: AccountActionResult }> {
+    if (!this.database) throw new Error("Database is unavailable.");
+    const [record] = await this.database.select({ id: users.id, email: users.email, passwordHash: users.passwordHash, emailVerifiedAt: users.emailVerifiedAt })
+      .from(users).where(eq(users.id, userId));
+    if (!record || !(await verifyPassword(password, record.passwordHash))) throw new AuthError("invalid-credentials");
+    if (record.emailVerifiedAt) throw new AuthError("email-already-verified");
+    try {
+      await this.database.update(users).set({ email: nextEmail, updatedAt: new Date() }).where(eq(users.id, userId));
+    } catch (error) {
+      if (isUniqueViolation(error)) throw new AuthError("duplicate-email");
+      throw error;
+    }
+    const user = await this.userById(userId);
+    if (!user) throw new AuthError("invalid-credentials");
+    return { user, verification: await this.issueAction(user, "verify-email") };
+  }
+
   private async loginWithDatabase(input: { email: string; password: string; fingerprint: string }): Promise<{ user: AuthenticatedUser; cookie: string }> {
     if (!this.database) throw new Error("Database is unavailable.");
     const [record] = await this.database.select({ id: users.id, email: users.email, passwordHash: users.passwordHash, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt, displayName: profiles.displayName, biography: profiles.biography, location: profiles.location, fieldName: profiles.fieldName, avatarDataUrl: profiles.avatarDataUrl }).from(users).leftJoin(profiles, eq(profiles.userId, users.id)).where(eq(users.email, input.email));
@@ -352,7 +458,7 @@ export class AuthService {
   private actionUrl(purpose: AccountActionPurpose, rawToken: string): string {
     const publicAppUrl = this.config.publicAppUrl ?? "http://localhost:5173";
     const base = publicAppUrl.endsWith("/") ? publicAppUrl : `${publicAppUrl}/`;
-    const url = new URL("join", base);
+    const url = new URL(purpose === "verify-email" ? "verify-email" : "join", base);
     url.searchParams.set(purpose === "verify-email" ? "verify" : "reset", rawToken);
     return url.toString();
   }
@@ -398,6 +504,7 @@ function authErrorMessage(code: AuthError["code"]): string {
   if (code === "duplicate-email") return "Use sign in or password recovery if this email already has a TOP account.";
   if (code === "too-many-attempts") return "Too many sign-in attempts. Please wait 15 minutes before trying again.";
   if (code === "invalid-action") return "That account link is invalid or has expired. Request a new one and try again.";
+  if (code === "email-already-verified") return "This email is already verified and cannot be changed from this screen.";
   return "Email or password is not correct.";
 }
 

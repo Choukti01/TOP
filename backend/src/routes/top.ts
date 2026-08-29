@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { AppConfig } from "../config/env.js";
 import { createPublicRepository } from "../public/repository.js";
 import { AuthService } from "../auth/service.js";
-import { currentUser, requireAuthenticatedUser } from "./auth.js";
+import { currentUser, requireVerifiedUser } from "./auth.js";
 import { notificationHub } from "../realtime/notificationHub.js";
 import { createRateLimit } from "../security/rateLimit.js";
 
@@ -42,7 +42,7 @@ export function createTopRouter(auth: AuthService, config: Pick<AppConfig, "data
   const contactLimit = createRateLimit({ scope: "top-contact", limit: 25, windowMs: 60 * 60 * 1000 });
   const messageLimit = createRateLimit({ scope: "top-message", limit: 60, windowMs: 60 * 60 * 1000 });
   const safetyLimit = createRateLimit({ scope: "top-safety", limit: 12, windowMs: 24 * 60 * 60 * 1000 });
-  router.use(requireAuthenticatedUser(auth));
+  router.use(requireVerifiedUser(auth));
 
   router.get("/events", (request, response) => {
     response.status(200);

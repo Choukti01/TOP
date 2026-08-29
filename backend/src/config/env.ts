@@ -12,6 +12,9 @@ export interface AppConfig {
   publicAppUrl?: string;
   resendApiKey?: string;
   emailFrom?: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
+  googleRedirectUri?: string;
   errorWebhookUrl?: string;
 }
 
@@ -52,6 +55,9 @@ export function loadConfig(env = process.env): AppConfig {
     accountActionSecret: env.ACCOUNT_ACTION_SECRET,
     resendApiKey: env.RESEND_API_KEY,
     emailFrom: env.EMAIL_FROM,
+    googleClientId: env.GOOGLE_CLIENT_ID,
+    googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+    googleRedirectUri: env.GOOGLE_REDIRECT_URI,
     errorWebhookUrl: env.ERROR_WEBHOOK_URL
   };
 }

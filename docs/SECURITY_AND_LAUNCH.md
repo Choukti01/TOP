@@ -24,9 +24,11 @@ This document explains the trust foundation currently built into TOP and the ope
 - Every API response has an `X-Request-Id`. Server errors are structured in Render logs without passwords, cookies, request bodies, or reset links.
 - A person can report a public profile and block another person. Reports are accepted only for real, relevant people, posts, comments, or received messages. Blocking is enforced by the API: it hides public discovery and signals, stops offers and connection requests, and closes private messaging between the two people.
 
-## Important current boundary
+## Verification boundary
 
-New accounts are invited to verify their email, but verification does not yet block access to normal product features. This avoids locking existing TOP members out when this migration launches. Before opening a larger public beta, decide whether verified email should be required for public posts, connection requests, and project invitations.
+New email-and-password accounts receive a signed, HTTP-only setup session only long enough to verify their email, resend the link, correct a mistyped email with their password, reset a password, edit their basic profile, or sign out. Until verified, TOP blocks access to the private Field and all public actions such as posting, reacting, commenting, connecting, messaging, offers, and project invitations.
+
+Google sign-in uses Google OpenID Connect with PKCE, state, nonce, and server-side ID-token signature validation. A successful Google identity is tied to the provider's stable subject identifier, then receives the same signed TOP session as an email account. Google-confirmed email addresses are marked verified. TOP never exposes the Google client secret to the frontend.
 
 The current rate-limit counters live inside the single Render API process. They protect TOP now, but they are not shared across multiple API instances. Move these counters to Redis before scaling beyond one web process.
 
@@ -45,6 +47,9 @@ Set these on the Render API service. Do not put any of them in Netlify or fronte
 | `PUBLIC_APP_URL=https://www.t0p.world` | yes | Destination for verification and password-reset links. |
 | `RESEND_API_KEY` | for email | API key for email delivery through Resend. |
 | `EMAIL_FROM=TOP <hello@t0p.world>` | for email | A verified sender identity in Resend. |
+| `GOOGLE_CLIENT_ID` | for Google sign-in | OAuth web-client ID from Google Cloud. |
+| `GOOGLE_CLIENT_SECRET` | for Google sign-in | OAuth web-client secret from Google Cloud. Keep it only in Render. |
+| `GOOGLE_REDIRECT_URI=https://api.t0p.world/api/v1/auth/google/callback` | for Google sign-in | Must exactly match the authorized redirect URI in Google Cloud. |
 | `ERROR_WEBHOOK_URL` | optional | Secure endpoint for concise server-error alerts. |
 
 Generate each secret with a password manager or this command in a local terminal:
@@ -69,9 +74,20 @@ TOP uses Resend's HTTPS API when both `RESEND_API_KEY` and `EMAIL_FROM` are conf
 
 Without a delivery provider, TOP still creates the secure hashed token but cannot send it to a real inbox. Development logs show local action links only outside production. Production never prints these links.
 
+## Google sign-in setup
+
+1. In Google Cloud Console, create or select a project and configure the OAuth consent screen as an External application.
+2. Add `www.t0p.world` and `t0p.world` as authorized JavaScript origins.
+3. Create a Web application OAuth client and add this exact authorized redirect URI: `https://api.t0p.world/api/v1/auth/google/callback`.
+4. Copy the client ID, client secret, and redirect URI into the three Render environment variables above.
+5. Redeploy the Render API. The Google button appears only after all three values are present.
+6. Test with an address that has never used TOP, then test an existing email account. Both must arrive at a signed TOP session with the existing profile preserved.
+
+Do not create a frontend Google client, place credentials in Netlify, or add a wildcard redirect URI. The TOP API is the only OAuth callback owner.
+
 ## Database migration and backup plan
 
-Migration `0014_account_trust_and_safety.sql` adds email verification, one-time account tokens, blocks, and safety reports. Run migrations once through the Render service command that already uses `npm run db:migrate` before serving the new release.
+Migration `0014_account_trust_and_safety.sql` adds email verification, one-time account tokens, blocks, and safety reports. Migration `0015_google_oauth_identities.sql` adds the provider-identity link used by Google sign-in. Run migrations once through the Render service command that already uses `npm run db:migrate` before serving the new release.
 
 Use this backup routine before public launch:
 
@@ -107,7 +123,7 @@ If a session or account concern is reported:
 - Confirm the API URL uses HTTPS and the frontend has no `localhost` API value in its production build.
 - Confirm Supabase uses the transaction pooler and that the API connection pool remains small.
 - Run `npm --prefix backend test`, `npm --prefix backend run type-check`, and `npm --prefix frontend run build` for every release.
-- Test registration, verification, normal sign-in, invalid sign-in, password reset, sign-out, block, report, connection, and direct message flows on production.
+- Test registration, verification, normal sign-in, Google sign-in, invalid sign-in, password reset, sign-out, block, report, connection, and direct message flows on production.
 - Confirm CORS only permits `https://www.t0p.world`, `https://t0p.world`, and explicitly approved local development origins.
 - Review the latest dependency audit before a release. Do not automatically apply breaking security fixes without testing them.
 - Restrict Supabase, Render, Resend, Netlify, Spaceship, and GitHub access to the smallest set of trusted people.
@@ -117,5 +133,4 @@ If a session or account concern is reported:
 - Move rate-limit counters from in-memory storage to Redis when the API has more than one instance.
 - Add an internal, access-controlled moderation queue for reviewing safety reports.
 - Add device/session management so members can see and revoke individual sessions.
-- Add verified-email requirements for high-trust actions after current members have had time to verify.
 - Add a responsible disclosure contact and a short privacy policy before a wider launch.

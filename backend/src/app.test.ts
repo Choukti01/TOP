@@ -20,6 +20,9 @@ beforeAll(async () => {
 
   expect(response.status).toBe(201);
   sessionCookie = response.headers["set-cookie"]?.[0]?.split(";")[0] ?? "";
+  const verificationUrl = new URL(response.body.developmentActionUrl);
+  const verified = await request(app).post("/api/v1/auth/email-verification/confirm").send({ token: verificationUrl.searchParams.get("verify") });
+  expect(verified.status).toBe(200);
 });
 
 describe("TOP API", () => {
@@ -219,6 +222,11 @@ describe("TOP API", () => {
       .post("/api/v1/auth/register")
       .send({ email: "another@example.com", displayName: "Another person", password: "another-long-password" });
     const secondCookie = secondPerson.headers["set-cookie"]?.[0]?.split(";")[0] ?? "";
+    const unverifiedDashboard = await request(app).get("/api/v1/workspace/dashboard").set("Cookie", secondCookie);
+    expect(unverifiedDashboard.status).toBe(403);
+    const secondVerificationUrl = new URL(secondPerson.body.developmentActionUrl);
+    const secondVerification = await request(app).post("/api/v1/auth/email-verification/confirm").send({ token: secondVerificationUrl.searchParams.get("verify") });
+    expect(secondVerification.status).toBe(200);
     const isolatedDashboard = await request(app).get("/api/v1/workspace/dashboard").set("Cookie", secondCookie);
 
     expect(isolatedDashboard.status).toBe(200);
@@ -312,6 +320,12 @@ describe("TOP API", () => {
     expect((await request(app).get("/api/v1/auth/session").set("Cookie", oldCookie)).status).toBe(401);
     expect((await request(app).post("/api/v1/auth/login").send({ email: "trust@example.com", password: "a-longer-secure-test-password" })).status).toBe(401);
     expect((await request(app).post("/api/v1/auth/login").send({ email: "trust@example.com", password: "a-completely-new-secure-password" })).status).toBe(200);
+  });
+
+  it("exposes only configured sign-in providers", async () => {
+    const response = await request(app).get("/api/v1/auth/providers");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ google: false });
   });
 
   it("slows repeated sign-in guesses before they become an account attack", async () => {

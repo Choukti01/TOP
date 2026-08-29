@@ -5,6 +5,7 @@ import IdentityView from "../views/IdentityView.vue";
 import GeneratingView from "../views/GeneratingView.vue";
 import Workspace from "../components/workspace/Workspace.vue";
 import JoinView from "../views/JoinView.vue";
+import VerifyEmailView from "../views/VerifyEmailView.vue";
 import FirstMovementView from "../views/FirstMovementView.vue";
 import ProfileView from "../views/ProfileView.vue";
 import TopPageView from "../views/TopPageView.vue";
@@ -66,6 +67,11 @@ const router = createRouter({
         },
 
         {
+            path: "/verify-email",
+            component: VerifyEmailView
+        },
+
+        {
             path: "/onboarding",
             component: FirstMovementView,
             meta: { requiresAuth: true }
@@ -105,7 +111,8 @@ const router = createRouter({
 router.beforeEach(async (to) => {
     if (!to.meta.requiresAuth) return true;
     const user = await restoreTopSession();
-    return user ? true : { path: "/join", query: { next: to.fullPath } };
+    if (!user) return { path: "/join", query: { next: to.fullPath } };
+    return user.emailVerified ? true : { path: "/verify-email", query: { next: to.fullPath } };
 });
 
 export default router;

@@ -333,6 +333,21 @@ export const postComments = pgTable("post_comments", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
 
+export const oauthIdentities = pgTable(
+  "oauth_identities",
+  {
+    provider: text("provider").notNull(),
+    providerSubject: text("provider_subject").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [primaryKey({ columns: [table.provider, table.providerSubject] }), index("oauth_identities_user_idx").on(table.userId)]
+);
+
 export const connectionRequests = pgTable(
   "connection_requests",
   {

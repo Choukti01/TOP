@@ -46,7 +46,7 @@ export function buildApp(config: AppConfig) {
 
   app.use("/health", healthRouter);
   app.use("/api/v1", apiRouter);
-  app.use("/api/v1/auth", createAuthRouter(auth));
+  app.use("/api/v1/auth", createAuthRouter(auth, config));
   app.use("/api/v1/workspace", createWorkspaceRouter(auth, config));
   app.use("/api/v1/top", createTopRouter(auth, config));
 

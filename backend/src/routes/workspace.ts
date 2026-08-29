@@ -6,13 +6,13 @@ import { createSeedSchema, seedStatusSchema } from "../modules/seeds/contracts.j
 import { createSeedRepository } from "../seeds/repository.js";
 import { createWorkspaceRepository } from "../workspace/repository.js";
 import { AuthService } from "../auth/service.js";
-import { currentUser, requireAuthenticatedUser } from "./auth.js";
+import { currentUser, requireVerifiedUser } from "./auth.js";
 
 export function createWorkspaceRouter(auth: AuthService, config: Pick<AppConfig, "databaseUrl" | "databaseEnabled">): Router {
 const workspaceRouter = Router();
 const workspace = createWorkspaceRepository(config);
 const seedGarden = createSeedRepository(config);
-workspaceRouter.use(requireAuthenticatedUser(auth));
+workspaceRouter.use(requireVerifiedUser(auth));
 
 const directionValues = ["personal", "creative", "learning", "community", "venture", "other"] as const;
 const contributionValues = ["idea", "research", "design", "code", "funding", "mentorship", "operations", "other"] as const;

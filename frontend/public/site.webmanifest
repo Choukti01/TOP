@@ -1,0 +1,35 @@
+{
+  "id": "/",
+  "name": "TOP",
+  "short_name": "TOP",
+  "description": "A field where ideas become real-world work.",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#10111d",
+  "theme_color": "#10111d",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/top-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/top-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/top-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

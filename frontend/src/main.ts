@@ -41,3 +41,11 @@ new MutationObserver((mutations) => {
     else for (const node of mutation.addedNodes) keepDirectionalMarksAsText(node);
   }
 }).observe(document.body, { childList: true, characterData: true, subtree: true });
+
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((error: unknown) => {
+      console.warn("TOP offline layer could not be installed.", error);
+    });
+  });
+}

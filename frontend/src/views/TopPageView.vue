@@ -3,7 +3,7 @@
     <div class="top-atmosphere" aria-hidden="true"><i></i><i></i><i></i></div>
     <header class="top-header">
       <button class="top-brand" type="button" aria-label="TOP Page" @click="refresh"><img :src="topLogoUrl" alt="TOP" /></button>
-      <nav aria-label="TOP Page navigation"><button class="nav-active" type="button" @click="refresh">TOP Page</button><button type="button" @click="openDiscovery">Discover</button><button type="button" @click="router.push('/profile?panel=signals')">Signals <b v-if="unreadCount">{{ unreadCount }}</b></button><button type="button" @click="router.push('/profile')">My profile</button></nav>
+      <nav aria-label="TOP Page navigation"><button class="nav-active" type="button" @click="refresh">TOP Page</button><button type="button" @click="openDiscovery">Discover</button><button type="button" @click="router.push('/topeye')">T0PEYE</button><button type="button" @click="router.push('/profile?panel=signals')">Signals <b v-if="unreadCount">{{ unreadCount }}</b></button><button type="button" @click="router.push('/profile')">My profile</button></nav>
       <button class="self-card" type="button" @click="router.push('/profile')"><span><img v-if="authState.user?.avatarDataUrl" :src="authState.user.avatarDataUrl" alt="Your profile" /><b v-else>{{ initials }}</b></span><strong>{{ authState.user?.displayName || 'My profile' }}</strong><i>↗</i></button>
     </header>
 

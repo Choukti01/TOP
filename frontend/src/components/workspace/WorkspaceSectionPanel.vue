@@ -173,12 +173,10 @@
       </template>
 
       <template v-else-if="WorkspaceState.activeSection === 'AI'">
-        <article v-if="WorkspaceState.dashboard.projects.length === 0" class="empty-state"><span class="eyebrow">FOCUS RITUAL</span><h2>Clarity starts with something real.</h2><p>Begin a project and TOP can bring you back to the next action you chose—without inventing advice.</p><button class="accent" type="button" @click="beginProject">Begin a project</button></article>
-        <template v-else>
-          <article class="focus-intro"><span class="eyebrow">FOCUS RITUAL</span><h2>Return to the next move you already chose.</h2><p>TOP protects attention by bringing you back to a real commitment, not by generating more things to consume.</p><button class="accent" :disabled="focusLoading" type="button" @click="requestFocus()">{{ focusLoading ? 'Finding it…' : 'Show my next move' }}</button></article>
-          <article v-if="focus" class="focus-result"><span>YOUR FOCUS</span><h2>{{ focus.title }}</h2><strong>{{ focus.action }}</strong><p>{{ focus.reason }}</p></article>
-          <div class="project-pills"><button v-for="project in WorkspaceState.dashboard.projects" :key="project.id" type="button" @click="requestFocus(project.id)">{{ project.title }}</button></div>
-        </template>
+        <article class="focus-intro"><span class="eyebrow">T0PEYE</span><h2>See further.<br />Build what you can imagine.</h2><p>T0PEYE is TOP’s private intelligence space for planning, coding, research, creation, and real project work. Your Field stays yours; you choose what context enters the conversation.</p><button class="accent" type="button" @click="router.push('/topeye')">Open T0PEYE <span>↗</span></button></article>
+        <article class="focus-result"><span>THE FIRST CONNECTION</span><h2>From thought to Field</h2><strong>Keep useful outputs as artifacts, then decide when they become part of a project.</strong><p>T0PEYE never publishes, invites, changes, or deletes work by itself. You stay responsible for the action that crosses into real life.</p><button class="quiet-action" type="button" @click="router.push('/topeye')">Enter private T0PEYE space ↗</button></article>
+        <article v-if="WorkspaceState.dashboard.projects.length > 0" class="focus-intro focus-ritual"><span class="eyebrow">QUICK RETURN</span><h2>Need one next move?</h2><p>This quiet focus ritual stays here when you want to return to the work already in your Field.</p><button class="accent" :disabled="focusLoading" type="button" @click="requestFocus()">{{ focusLoading ? 'Finding it…' : 'Show my next move' }}</button></article>
+        <article v-if="focus" class="focus-result"><span>YOUR FOCUS</span><h2>{{ focus.title }}</h2><strong>{{ focus.action }}</strong><p>{{ focus.reason }}</p></article>
       </template>
 
       <template v-else-if="WorkspaceState.activeSection === 'Reflection'">
@@ -193,6 +191,7 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 
 import { getFocusSuggestion, saveWorkspaceReflection, subscribeToTopSignals, type FocusSuggestion, type ProjectArtifactKind, type ProjectContributionType, type ProjectDirection, type ProjectMemberRole, type ProjectMessageKind, type ProjectStatus } from "../../lib/api";
 import { getLocalArtifactPreview } from "../../lib/artifactVault";
@@ -205,6 +204,7 @@ import { workspaceEngine } from "./WorkspaceEngine";
 import { WorkspaceState } from "./WorkspaceState";
 
 const focus = ref<FocusSuggestion | null>(null);
+const router = useRouter();
 const focusLoading = ref(false);
 const reflection = ref("");
 const reflectionSaving = ref(false);

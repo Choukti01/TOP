@@ -321,6 +321,48 @@ export interface FocusSuggestion {
   reason: string;
 }
 
+export type TopEyeMode = "chat" | "plan" | "code" | "research" | "create";
+export type TopEyeArtifactKind = "note" | "plan" | "code" | "research" | "document" | "design";
+
+export interface TopEyeStatus {
+  configured: boolean;
+  model: string | null;
+  capabilities: { conversation: boolean; artifacts: boolean; projectContext: boolean; uploads: boolean; tools: boolean };
+}
+
+export interface TopEyeThread {
+  id: string;
+  title: string;
+  mode: TopEyeMode;
+  projectId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TopEyeMessage {
+  id: string;
+  threadId: string;
+  role: "user" | "assistant";
+  content: string;
+  model: string | null;
+  createdAt: string;
+}
+
+export interface TopEyeThreadDetail extends TopEyeThread {
+  messages: TopEyeMessage[];
+}
+
+export interface TopEyeArtifact {
+  id: string;
+  threadId: string | null;
+  projectId: string | null;
+  kind: TopEyeArtifactKind;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PersonalDashboard {
   summary: {
     projectCount: number;
@@ -707,4 +749,40 @@ export function getFocusSuggestion(projectId?: string): Promise<FocusSuggestion>
     method: "POST",
     body: projectId ? { projectId } : {}
   });
+}
+
+export function getTopEyeStatus(): Promise<TopEyeStatus> {
+  return request<TopEyeStatus>("/api/v1/topeye/status");
+}
+
+export function getTopEyeThreads(): Promise<{ threads: TopEyeThread[] }> {
+  return request<{ threads: TopEyeThread[] }>("/api/v1/topeye/threads");
+}
+
+export function getTopEyeThread(threadId: string): Promise<{ thread: TopEyeThreadDetail }> {
+  return request<{ thread: TopEyeThreadDetail }>(`/api/v1/topeye/threads/${encodeURIComponent(threadId)}`);
+}
+
+export function createTopEyeThread(input: { title: string; mode: TopEyeMode; projectId?: string | null }): Promise<{ thread: TopEyeThread }> {
+  return request<{ thread: TopEyeThread }>("/api/v1/topeye/threads", { method: "POST", body: input });
+}
+
+export function updateTopEyeThreadProject(threadId: string, projectId: string | null): Promise<{ thread: TopEyeThread }> {
+  return request<{ thread: TopEyeThread }>(`/api/v1/topeye/threads/${encodeURIComponent(threadId)}`, { method: "PATCH", body: { projectId } });
+}
+
+export function deleteTopEyeThread(threadId: string): Promise<void> {
+  return request<void>(`/api/v1/topeye/threads/${encodeURIComponent(threadId)}`, { method: "DELETE" });
+}
+
+export function sendTopEyeMessage(threadId: string, content: string): Promise<{ userMessage: TopEyeMessage; assistantMessage: TopEyeMessage }> {
+  return request<{ userMessage: TopEyeMessage; assistantMessage: TopEyeMessage }>(`/api/v1/topeye/threads/${encodeURIComponent(threadId)}/messages`, { method: "POST", body: { content } });
+}
+
+export function getTopEyeArtifacts(): Promise<{ artifacts: TopEyeArtifact[] }> {
+  return request<{ artifacts: TopEyeArtifact[] }>("/api/v1/topeye/artifacts");
+}
+
+export function createTopEyeArtifact(input: { threadId?: string | null; projectId?: string | null; kind: TopEyeArtifactKind; title: string; content: string }): Promise<{ artifact: TopEyeArtifact }> {
+  return request<{ artifact: TopEyeArtifact }>("/api/v1/topeye/artifacts", { method: "POST", body: input });
 }

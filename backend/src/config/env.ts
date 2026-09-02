@@ -15,6 +15,8 @@ export interface AppConfig {
   googleClientId?: string;
   googleClientSecret?: string;
   googleRedirectUri?: string;
+  openAiApiKey?: string;
+  topEyeModel?: string;
   errorWebhookUrl?: string;
 }
 
@@ -58,6 +60,9 @@ export function loadConfig(env = process.env): AppConfig {
     googleClientId: env.GOOGLE_CLIENT_ID,
     googleClientSecret: env.GOOGLE_CLIENT_SECRET,
     googleRedirectUri: env.GOOGLE_REDIRECT_URI,
+    // T0PEYE is intentionally server-only. The browser never receives this key.
+    openAiApiKey: env.OPENAI_API_KEY,
+    topEyeModel: env.TOPEYE_MODEL,
     errorWebhookUrl: env.ERROR_WEBHOOK_URL
   };
 }

@@ -8,6 +8,7 @@ import { createAuthRouter } from "./routes/auth.js";
 import { healthRouter } from "./routes/health.js";
 import { createWorkspaceRouter } from "./routes/workspace.js";
 import { createTopRouter } from "./routes/top.js";
+import { createTopEyeRouter } from "./routes/topeye.js";
 import { reportUnhandledError, requestContext } from "./observability/monitoring.js";
 
 export function buildApp(config: AppConfig) {
@@ -49,6 +50,7 @@ export function buildApp(config: AppConfig) {
   app.use("/api/v1/auth", createAuthRouter(auth, config));
   app.use("/api/v1/workspace", createWorkspaceRouter(auth, config));
   app.use("/api/v1/top", createTopRouter(auth, config));
+  app.use("/api/v1/topeye", createTopEyeRouter(auth, config));
 
   // Keep production errors useful in Render logs without leaking database or
   // implementation details to people using TOP.

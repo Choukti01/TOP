@@ -10,6 +10,7 @@ import FirstMovementView from "../views/FirstMovementView.vue";
 import ProfileView from "../views/ProfileView.vue";
 import TopPageView from "../views/TopPageView.vue";
 import PublicProfileView from "../views/PublicProfileView.vue";
+import TopEyeView from "../views/TopEyeView.vue";
 import { restoreTopSession } from "../lib/auth";
 
 const router = createRouter({
@@ -47,6 +48,12 @@ const router = createRouter({
         {
             path: "/field",
             component: Workspace,
+            meta: { requiresAuth: true }
+        },
+
+        {
+            path: "/topeye",
+            component: TopEyeView,
             meta: { requiresAuth: true }
         },
 

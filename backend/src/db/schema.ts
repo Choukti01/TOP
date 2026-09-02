@@ -491,3 +491,55 @@ export const reflections = pgTable("reflections", {
   nextFocus: text("next_focus"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+// T0PEYE data is deliberately separate from public posts and project activity.
+// A conversation belongs to one person; a project can only be attached when
+// the API has confirmed that person is allowed to access it.
+export const topEyeThreads = pgTable(
+  "topeye_threads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    mode: text("mode").notNull().default("chat"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [index("topeye_threads_owner_updated_idx").on(table.ownerId, table.updatedAt), index("topeye_threads_project_idx").on(table.projectId)]
+);
+
+export const topEyeMessages = pgTable(
+  "topeye_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => topEyeThreads.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    model: text("model"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [index("topeye_messages_thread_created_idx").on(table.threadId, table.createdAt)]
+);
+
+export const topEyeArtifacts = pgTable(
+  "topeye_artifacts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    threadId: uuid("thread_id").references(() => topEyeThreads.id, { onDelete: "set null" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [index("topeye_artifacts_owner_updated_idx").on(table.ownerId, table.updatedAt), index("topeye_artifacts_thread_idx").on(table.threadId), index("topeye_artifacts_project_idx").on(table.projectId)]
+);

@@ -328,6 +328,43 @@ describe("TOP API", () => {
     expect(response.body).toEqual({ google: false });
   });
 
+  it("keeps a private T0PEYE foundation ready before a model provider is connected", async () => {
+    const status = await request(app).get("/api/v1/topeye/status").set("Cookie", sessionCookie);
+    expect(status.status).toBe(200);
+    expect(status.body).toMatchObject({ configured: false, capabilities: { artifacts: true, projectContext: true } });
+
+    const created = await request(app)
+      .post("/api/v1/topeye/threads")
+      .set("Cookie", sessionCookie)
+      .send({ title: "Launch planning", mode: "plan", projectId: null });
+    expect(created.status).toBe(201);
+    expect(created.body.thread).toMatchObject({ title: "Launch planning", mode: "plan", projectId: null });
+
+    const threadId = created.body.thread.id;
+    const opened = await request(app).get(`/api/v1/topeye/threads/${threadId}`).set("Cookie", sessionCookie);
+    expect(opened.status).toBe(200);
+    expect(opened.body.thread.messages).toEqual([]);
+
+    const unavailableModel = await request(app)
+      .post(`/api/v1/topeye/threads/${threadId}/messages`)
+      .set("Cookie", sessionCookie)
+      .send({ content: "Help me plan a practical launch." });
+    expect(unavailableModel.status).toBe(503);
+
+    const artifact = await request(app)
+      .post("/api/v1/topeye/artifacts")
+      .set("Cookie", sessionCookie)
+      .send({ threadId, projectId: null, kind: "plan", title: "Launch outline", content: "A kept planning artifact belongs to its owner." });
+    expect(artifact.status).toBe(201);
+
+    const library = await request(app).get("/api/v1/topeye/artifacts").set("Cookie", sessionCookie);
+    expect(library.status).toBe(200);
+    expect(library.body.artifacts).toHaveLength(1);
+
+    expect((await request(app).delete(`/api/v1/topeye/threads/${threadId}`).set("Cookie", sessionCookie)).status).toBe(204);
+    expect((await request(app).get(`/api/v1/topeye/threads/${threadId}`).set("Cookie", sessionCookie)).status).toBe(404);
+  });
+
   it("slows repeated sign-in guesses before they become an account attack", async () => {
     for (let attempt = 0; attempt < 7; attempt += 1) {
       expect((await request(app).post("/api/v1/auth/login").send({ email: "not-an-account@example.com", password: "not-the-right-password" })).status).toBe(401);

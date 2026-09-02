@@ -23,7 +23,7 @@
 
     <main class="arrival-copy">
       <div class="arrival-eyebrow"><i aria-hidden="true"></i><span>YOUR ATTENTION CAN BECOME A STARTING POINT</span></div>
-      <h1>Don’t forget to<br /><em>make a plan.</em><span>On your way to the T0P.</span></h1>
+      <h1><span>On your way to the T0P,</span><em>don’t forget to<br />make a plan.</em></h1>
       <p class="arrival-statement">Bring one idea to the place where it can meet people, take form, and leave a real trace.</p>
       <p class="arrival-support">TOP turns a signal into a circle, a circle into work, and work into a life that moves forward.</p>
 
@@ -117,5 +117,5 @@ function enter(): void {
 @keyframes mobile-arrival-rise { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:none; } }
 @media (max-width:390px) { .arrival-copy { padding-left:16px; padding-right:16px; }.arrival-copy h1 { font-size:55px; }.arrival-eyebrow { font-size:7px; gap:8px; }.movement-loop li { padding:9px; }.movement-loop strong { font-size:12px; } }
 @media (prefers-reduced-motion:reduce) { .signal-lines,.arrival-copy,.entering .arrival-copy { animation:none; }.path-reveal-enter-active,.path-reveal-leave-active { transition:none; } }
-.arrival-copy h1 { font-size:clamp(55px,7.7vw,111px); line-height:.82; }.arrival-copy h1 span { color:rgba(233,241,255,.72); display:block; font-family:var(--top-body); font-size:.37em; font-weight:600; letter-spacing:-.045em; line-height:1.08; margin-top:17px; text-shadow:none; } @media (max-width:760px) { .arrival-copy h1 { font-size:clamp(52px,15.5vw,78px); line-height:.83; }.arrival-copy h1 span { font-size:.39em; margin-top:14px; } }
+.arrival-copy h1 { font-size:clamp(55px,7.7vw,111px); line-height:.82; }.arrival-copy h1 span { color:rgba(233,241,255,.72); display:block; font-family:var(--top-body); font-size:.37em; font-weight:600; letter-spacing:-.045em; line-height:1.08; margin-bottom:17px; text-shadow:none; }.arrival-copy h1 em { display:block; } @media (max-width:760px) { .arrival-copy h1 { font-size:clamp(52px,13.5vw,78px); line-height:.83; }.arrival-copy h1 span { font-size:.39em; margin-bottom:14px; } }
 </style>

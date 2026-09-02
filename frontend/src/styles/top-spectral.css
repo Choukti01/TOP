@@ -273,3 +273,86 @@ select:focus-visible { outline: 2px solid var(--top-cyan) !important; outline-of
   button:active { transform:scale(.975); }
   .workspace button:hover,.surface button:hover,.identity button:hover,.intro button:hover,.threshold button:hover { transform:none; }
 }
+
+/* Final phone pass: page shells breathe, forms avoid iOS zoom, and compact actions remain easy to reach. */
+@media (max-width: 760px) {
+  :where(html, body, #app) { max-width: 100%; }
+
+  .join-view,
+  .verify-view {
+    align-items: flex-start;
+    min-height: 100svh;
+    overflow-x: clip;
+    overflow-y: auto;
+    padding-bottom: calc(38px + env(safe-area-inset-bottom));
+  }
+
+  .join-view .join-shell,
+  .verify-view .verify-shell { gap: 30px; }
+
+  .join-view .join-intro,
+  .verify-view .verify-intro { padding-top: 3px; }
+
+  .join-view .join-card,
+  .verify-view .verify-card {
+    border-radius: 23px 23px 7px 23px;
+    padding: 24px 19px;
+    width: 100%;
+  }
+
+  .join-view .join-card h2,
+  .verify-view .verify-card h2 { font-size: clamp(34px, 11vw, 42px); }
+
+  .join-view .join-card input,
+  .verify-view .email-form input,
+  .movement-page input,
+  .movement-page textarea,
+  .profile-view input,
+  .profile-view textarea,
+  .top-page input,
+  .top-page textarea,
+  .public-profile-page textarea,
+  .surface input,
+  .surface textarea,
+  .surface select { font-size: 16px !important; }
+
+  .join-view .join-card input,
+  .verify-view .email-form input { min-height: 48px; }
+
+  .join-view .join-switch,
+  .join-view .join-forgot,
+  .verify-view .quiet,
+  .verify-view .sign-out { min-height: 38px; padding: 7px 0; }
+
+  .top-page .reaction-row button,
+  .top-page .response-toggle,
+  .top-page .post-ownership button,
+  .top-page .comment-actions button,
+  .top-page .kind-picker button { min-height: 42px; }
+
+  .top-page .reaction-row button { align-items: center; display: inline-flex; justify-content: center; }
+
+  .top-page .post-person,
+  .top-page .result-person { min-height: 44px; }
+
+  .public-profile-page .profile-rail,
+  .profile-view .profile-nav { overscroll-behavior-x: contain; scrollbar-width: none; }
+
+  .public-profile-page .profile-rail::-webkit-scrollbar,
+  .profile-view .profile-nav::-webkit-scrollbar { display: none; }
+
+  .workspace .atlas-backdrop { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+
+  .workspace .atlas,
+  .workspace .inspector { overscroll-behavior: contain; }
+}
+
+@media (max-width: 390px) {
+  .join-view,
+  .verify-view { padding-left: 15px; padding-right: 15px; }
+  .join-view .join-card,
+  .verify-view .verify-card { padding-left: 17px; padding-right: 17px; }
+  .top-page .signal-composer,
+  .top-page .post-card,
+  .public-profile-page .shared-post-card { padding-left: 15px; padding-right: 15px; }
+}

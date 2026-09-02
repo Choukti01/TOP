@@ -2,7 +2,7 @@
 
 T0PEYE is TOP’s private intelligence space. It helps a person think, plan, code, research, and create without turning their attention into a product.
 
-The first release is a foundation, not a claim that TOP has trained its own frontier model. TOP owns the interface, permissions, memory boundaries, artifacts, and project relationship. A configured model provider supplies the reasoning engine.
+The first release is a foundation, not a claim that TOP has trained a frontier base model from zero. TOP owns the interface, permissions, memory boundaries, artifacts, project relationship, and local intelligence profile. Ollama supplies the local base model runtime.
 
 ## Current capabilities
 
@@ -10,7 +10,7 @@ The first release is a foundation, not a claim that TOP has trained its own fron
 2. Five work modes: Chat, Plan, Code, Research, and Create
 3. Persistent conversation metadata and kept artifacts
 4. Optional project context selected before the first message
-5. Server-only model-provider connection
+5. Local-only model connection through the person’s own Ollama runtime
 6. Per-user rate limits for generation and writing actions
 7. Explicit library actions for keeping useful AI outputs
 8. Conversation deletion controlled by the owner
@@ -21,8 +21,8 @@ The first release is a foundation, not a claim that TOP has trained its own fron
 2. A project can only be attached after TOP confirms the account owns it or belongs to its circle.
 3. Only the selected project’s title, purpose, direction, status, and next action are offered to the model.
 4. A project context is locked after the first message so conversation intent remains clear.
-5. TOP does not send API keys to the browser.
-6. The provider request sets `store: false`. TOP remains the system of record for the conversation it keeps.
+5. The Vue app never talks to Ollama directly. It communicates only with TOP’s local Node API.
+6. TOP refuses non-loopback Ollama URLs, so a development configuration cannot silently send a person’s work to a remote endpoint.
 7. T0PEYE cannot publish, invite, contact, delete, deploy, purchase, or change work outside its private conversation.
 
 ## Database records
@@ -35,26 +35,24 @@ The first release is a foundation, not a claim that TOP has trained its own fron
 
 Future releases can add uploads, citations, tool runs, durable memory, model usage records, and explicit action approvals. Those features should remain separate tables with the same owner and project permission checks.
 
-## Configure a model provider
+## Run T0PEYE Core locally
 
-The foundation deploys without a provider key, but live AI replies remain disabled until one is configured.
+T0PEYE replies are intentionally enabled only in a local development copy of TOP. A public deployment cannot reach someone’s laptop, and it should not pretend that it can.
 
-1. Create a provider API key in the account TOP will use for T0PEYE.
-2. In Render, open the TOP API service.
-3. Open Environment.
-4. Add `OPENAI_API_KEY` with that secret value.
-5. Optionally add `TOPEYE_MODEL` if you want to deliberately select a supported model. Leave it blank to use TOP’s default.
-6. Save the variables and manually deploy the latest API commit.
-7. Open `/topeye` while signed in. Its connection notice changes when the secure provider is ready.
+1. Install and start Ollama on the computer running the TOP backend.
+2. From the TOP repository, run `ollama pull smollm:1.7b`.
+3. Run `ollama create topeye-core -f ai/topeye/Modelfile`.
+4. Keep the development defaults in `backend/.env`: `TOPEYE_ENGINE=ollama`, `OLLAMA_BASE_URL=http://127.0.0.1:11434`, and `TOPEYE_MODEL=topeye-core`.
+5. Start TOP locally and open `/topeye` while signed in. The connection notice changes to Local Core Ready when the profile is available.
 
-Never add the provider key to GitHub, Netlify, frontend environment files, screenshots, or chat messages.
+The hosted TOP site shows the rest of the T0PEYE foundation but leaves live inference disabled until TOP has a deliberately designed hosted-compute path.
 
 ## Delivery path
 
-1. Foundation: private spaces, modes, persistent artifacts, model boundary, project-aware context
+1. Foundation: private spaces, modes, persistent artifacts, local engine boundary, project-aware context
 2. Craft: streaming replies, artifact editor, code preview, document canvas, source citations
 3. Memory: consent-based uploads, semantic retrieval, personal memory controls, deletion tools
 4. Tools: project creation, milestone drafting, research actions, file work, controlled TOP actions
-5. Intelligence: model routing, evaluation suites, cost controls, optional specialized fine-tuning
+5. Intelligence: model routing, evaluation suites, specialist adapters, and a deliberately funded hosted engine
 
 Every stage must preserve the same rule: the person decides what becomes real.

@@ -324,9 +324,20 @@ export interface FocusSuggestion {
 export type TopEyeMode = "chat" | "plan" | "code" | "research" | "create";
 export type TopEyeArtifactKind = "note" | "plan" | "code" | "research" | "document" | "design";
 
+export interface TopEyeRuntime {
+  configured: boolean;
+  engine: "ollama" | "disabled";
+  location: "local";
+  model: string | null;
+  requestedModel: string | null;
+  installedModels: Array<{ name: string; sizeBytes: number | null }>;
+  message: string;
+}
+
 export interface TopEyeStatus {
   configured: boolean;
   model: string | null;
+  runtime: TopEyeRuntime;
   capabilities: { conversation: boolean; artifacts: boolean; projectContext: boolean; uploads: boolean; tools: boolean };
 }
 

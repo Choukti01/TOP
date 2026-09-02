@@ -22,7 +22,7 @@
           </li>
         </ol>
 
-        <div class="rail-foot"><span><i :class="{ live: status?.configured }"></i>{{ status?.configured ? 'MODEL CONNECTION READY' : 'PRIVATE FOUNDATION READY' }}</span><button type="button" @click="router.push('/field')">Back to Field <b>↗</b></button></div>
+        <div class="rail-foot"><span><i :class="{ live: status?.configured }"></i>{{ status?.configured ? 'LOCAL CORE READY' : status?.runtime?.engine === 'ollama' ? 'LOCAL CORE AWAITS MODEL' : 'LOCAL MODE ONLY' }}</span><button type="button" @click="router.push('/field')">Back to Field <b>↗</b></button></div>
       </aside>
 
       <section class="eye-stage">
@@ -45,7 +45,7 @@
           </header>
 
           <p v-if="error" class="eye-error" role="alert">{{ error }}</p>
-          <section v-if="!status?.configured" class="connection-notice"><i>◌</i><div><strong>T0PEYE’s private studio is ready.</strong><p>A secure model connection is the only missing piece before live answers begin. Conversations, artifacts, project boundaries, and permissions are already protected by TOP.</p></div></section>
+          <section v-if="!status?.configured" class="connection-notice"><i>◌</i><div><strong>{{ status?.runtime?.engine === 'ollama' ? 'T0PEYE is waiting for its local core.' : 'T0PEYE runs from a local TOP studio.' }}</strong><p>{{ runtimeMessage }}</p><small v-if="installedModelNames">Models found on this machine: {{ installedModelNames }}</small><small v-else-if="status?.runtime?.requestedModel">Requested local profile: {{ status.runtime.requestedModel }}</small></div></section>
 
           <section ref="conversationEl" class="conversation" aria-live="polite">
             <div v-if="thread.messages.length === 0" class="empty-conversation"><span>THIS SPACE IS LISTENING</span><h2>Begin with the raw version.</h2><p>You can arrive with a question, half-formed idea, problem, file plan, code goal, or a direction that has not found its words yet.</p></div>
@@ -61,8 +61,8 @@
             <div class="mode-strip" aria-label="T0PEYE mode">
               <button v-for="option in modes" :key="option.id" type="button" :class="{ active: mode === option.id }" :disabled="thread.messages.length > 0" @click="mode = option.id">{{ option.mark }} {{ option.label }}</button>
             </div>
-            <textarea v-model.trim="draft" maxlength="12000" :disabled="sending || !status?.configured" :placeholder="status?.configured ? composerPlaceholder : 'Connect T0PEYE to a secure model provider to begin live work.'" @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send"></textarea>
-            <footer><small>{{ draft.length }}/12000 <span>·</span> {{ status?.configured ? '⌘ / Ctrl + Enter to send' : 'Your words remain private to TOP until a model connection is configured.' }}</small><button type="submit" :disabled="sending || !status?.configured || draft.length < 1">{{ sending ? 'Thinking…' : 'Send to T0PEYE' }} <i>↗</i></button></footer>
+            <textarea v-model.trim="draft" maxlength="12000" :disabled="sending || !status?.configured" :placeholder="status?.configured ? composerPlaceholder : runtimeMessage" @keydown.meta.enter.prevent="send" @keydown.ctrl.enter.prevent="send"></textarea>
+            <footer><small>{{ draft.length }}/12000 <span>·</span> {{ status?.configured ? '⌘ / Ctrl + Enter to send' : 'T0PEYE only speaks with the local model you choose to run on this machine.' }}</small><button type="submit" :disabled="sending || !status?.configured || draft.length < 1">{{ sending ? 'Thinking…' : 'Send to T0PEYE' }} <i>↗</i></button></footer>
           </form>
         </template>
       </section>
@@ -72,7 +72,7 @@
         <p class="artifact-intro">Useful outputs stay yours. Keep a plan, draft, code idea, research note, or design direction before you decide where it belongs.</p>
         <ol v-if="artifacts.length" class="artifact-list"><li v-for="artifact in artifacts.slice(0, 8)" :key="artifact.id"><span>{{ artifact.kind }}</span><strong>{{ artifact.title }}</strong><p>{{ artifact.content }}</p><small>{{ formatTime(artifact.updatedAt) }}<template v-if="artifact.projectId"> · Field-linked</template></small></li></ol>
         <div v-else class="artifact-empty"><i>✦</i><strong>Your first kept artifact will appear here.</strong><p>T0PEYE never treats an answer as finished work until you choose to keep it.</p></div>
-        <div class="capability-list"><span>FOUNDATION</span><p><i>✓</i> Private conversations</p><p><i>✓</i> Project-aware spaces</p><p><i>✓</i> Kept artifacts</p><p><i>{{ status?.configured ? '✓' : '◌' }}</i> Secure model connection</p><p><i>◌</i> Uploads and tool actions next</p></div>
+        <div class="capability-list"><span>FOUNDATION</span><p><i>✓</i> Private conversations</p><p><i>✓</i> Project-aware spaces</p><p><i>✓</i> Kept artifacts</p><p><i>{{ status?.configured ? '✓' : '◌' }}</i> Local model engine</p><p><i>◌</i> Consent memory and tools next</p></div>
       </aside>
     </section>
   </main>
@@ -131,6 +131,8 @@ const modes: Array<{ id: TopEyeMode; label: string; mark: string; description: s
 ];
 
 const projectName = computed(() => projects.value.find((project) => project.id === thread.value?.projectId)?.title ?? "");
+const runtimeMessage = computed(() => status.value?.runtime?.message ?? "T0PEYE is preparing its local engine.");
+const installedModelNames = computed(() => status.value?.runtime?.installedModels.map((item) => item.name).join(", ") ?? "");
 const composerPlaceholder = computed(() => ({
   chat: "Ask T0PEYE anything. Begin messy if you need to.",
   plan: "What do you want to make real? Include the outcome, constraints, and what is already true.",

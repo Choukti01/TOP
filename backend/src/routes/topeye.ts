@@ -25,7 +25,7 @@ const artifactInput = z.object({
   content: z.string().trim().min(1).max(30_000)
 }).strict();
 
-export function createTopEyeRouter(auth: AuthService, config: Pick<AppConfig, "databaseUrl" | "databaseEnabled" | "openAiApiKey" | "topEyeModel">): Router {
+export function createTopEyeRouter(auth: AuthService, config: Pick<AppConfig, "databaseUrl" | "databaseEnabled" | "environment" | "topEyeEngine" | "ollamaBaseUrl" | "topEyeModel">): Router {
   const router = Router();
   const repository = createTopEyeRepository(config);
   const provider = new TopEyeProvider(config);
@@ -34,11 +34,15 @@ export function createTopEyeRouter(auth: AuthService, config: Pick<AppConfig, "d
 
   router.use(requireVerifiedUser(auth));
 
-  router.get("/status", (_request, response) => response.status(200).json({
-    configured: provider.enabled,
-    model: provider.model,
-    capabilities: { conversation: provider.enabled, artifacts: true, projectContext: true, uploads: false, tools: false }
-  }));
+  router.get("/status", async (_request, response) => {
+    const runtime = await provider.status();
+    response.status(200).json({
+      configured: runtime.configured,
+      model: runtime.model,
+      runtime,
+      capabilities: { conversation: runtime.configured, artifacts: true, projectContext: true, uploads: false, tools: false }
+    });
+  });
 
   router.get("/threads", async (_request, response) => {
     response.status(200).json({ threads: await repository.listThreads(currentUser(response).id) });
@@ -77,8 +81,6 @@ export function createTopEyeRouter(auth: AuthService, config: Pick<AppConfig, "d
     if (!parsed.success) return response.status(422).json({ error: "Write a clear thought for T0PEYE to work with." });
     const thread = await repository.getThread(currentUser(response).id, routeParam(request.params.threadId));
     if (!thread) return response.status(404).json({ error: "That T0PEYE conversation is not available." });
-    if (!provider.enabled) return response.status(503).json({ error: "T0PEYE’s secure model connection is not configured yet. Your private spaces are ready; add the provider key before starting a live conversation." });
-
     try {
       const projectContext = thread.projectId ? await repository.getProjectContext(currentUser(response).id, thread.projectId) : null;
       const completion = await provider.respond({
@@ -91,7 +93,7 @@ export function createTopEyeRouter(auth: AuthService, config: Pick<AppConfig, "d
       if (!userMessage || !assistantMessage) return response.status(404).json({ error: "That T0PEYE conversation is no longer available." });
       return response.status(201).json({ userMessage, assistantMessage });
     } catch (error) {
-      if (error instanceof TopEyeProviderError) return response.status(error.code === "not-configured" ? 503 : 502).json({ error: error.message });
+      if (error instanceof TopEyeProviderError) return response.status(error.code === "upstream" ? 502 : 503).json({ error: error.message });
       throw error;
     }
   });
